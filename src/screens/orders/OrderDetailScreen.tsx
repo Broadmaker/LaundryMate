@@ -286,14 +286,30 @@ export default function OrderDetailScreen() {
         {/* Payment */}
         <Card className="p-4">
           <SectionLabel title="Payment" className="mb-3" />
+
+          {/* Balance due banner — shown prominently when not fully paid */}
+          {order.amountPaid < order.total && (
+            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+              <View>
+                <Text className="text-xs font-bold text-amber-700">Balance Due</Text>
+                <Text className="mt-0.5 text-xs text-amber-600">Collect before claiming</Text>
+              </View>
+              <Text className="text-lg font-bold text-amber-600">
+                {formatPeso(order.total - order.amountPaid)}
+              </Text>
+            </View>
+          )}
+
           <View className="flex-row flex-wrap gap-4">
             {[
               {
                 label: 'Method',
-                value: order.paymentMethod?.replace('_', ' ').toUpperCase() ?? 'Unpaid',
+                value: order.paymentMethod?.replace('_', ' ').toUpperCase() ?? '—',
               },
               { label: 'Amount Paid', value: formatPeso(order.amountPaid) },
-              ...(order.change > 0 ? [{ label: 'Change', value: formatPeso(order.change) }] : []),
+              ...(order.amountPaid > order.total
+                ? [{ label: 'Change', value: formatPeso(order.amountPaid - order.total) }]
+                : []),
             ].map((item) => (
               <View key={item.label} className="min-w-24">
                 <Text className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">

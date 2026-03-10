@@ -165,22 +165,27 @@ export default function ReportsScreen() {
               <ChevronRight size={10} color="#0EA5E9" />
             </TouchableOpacity>
           </Card>
-          <Card
-            className={`flex-1 p-3 ${netProfit >= 0 ? 'bg-sky-500' : 'bg-red-500'}`}
+          <View
+            className="flex-1 rounded-2xl p-3"
             style={{
+              backgroundColor: netProfit >= 0 ? '#0EA5E9' : '#EF4444',
               shadowColor: netProfit >= 0 ? '#0EA5E9' : '#EF4444',
               shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.2,
+              shadowOpacity: 0.3,
               shadowRadius: 6,
               elevation: 3,
             }}>
             <View className="mb-2 flex-row items-center gap-1.5">
               <BarChart2 size={13} color="rgba(255,255,255,0.8)" strokeWidth={2} />
-              <Text className="text-xs font-bold text-white/80">NET</Text>
+              <Text className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                NET
+              </Text>
             </View>
             <Text className="text-base font-bold text-white">{formatPeso(netProfit)}</Text>
-            <Text className="mt-0.5 text-xs text-white/60">Profit</Text>
-          </Card>
+            <Text className="mt-0.5 text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              Profit
+            </Text>
+          </View>
         </View>
 
         {/* Bar Chart */}

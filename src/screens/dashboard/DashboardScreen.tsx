@@ -20,7 +20,7 @@ import {
   Database,
 } from 'lucide-react-native';
 
-import { dbGetDashboardStats, dbGetOrders } from '../../db';
+import { dbGetDashboardStats, dbGetOrders, dbGetSettings } from '../../db';
 import { formatPeso, formatRelativeTime, getGreeting, formatFullDate } from '../../utils';
 import { StatusBadge, Card, Avatar, SectionLabel, LoadingScreen } from '../../components/common';
 import type { DashboardStackParams } from '../../navigation/types';
@@ -96,12 +96,20 @@ export default function DashboardScreen() {
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [shopName, setShopName] = useState('LaundryMate');
+  const [shopAddress, setShopAddress] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const [s, orders] = await Promise.all([dbGetDashboardStats(), dbGetOrders()]);
+      const [s, orders, settings] = await Promise.all([
+        dbGetDashboardStats(),
+        dbGetOrders(),
+        dbGetSettings(),
+      ]);
       setStats(s);
       setRecentOrders(orders.slice(0, 5));
+      if (settings.shopName) setShopName(String(settings.shopName));
+      if (settings.address) setShopAddress(String(settings.address));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -132,19 +140,29 @@ export default function DashboardScreen() {
         <View className="flex-row items-center justify-between">
           <View>
             <Text className="text-xs font-medium text-slate-400">{getGreeting()}</Text>
-            <Text className="mt-0.5 text-xl font-bold text-slate-900">LaundryMate</Text>
-            <Text className="mt-0.5 text-xs text-slate-400">{formatFullDate(now)}</Text>
+            <Text className="mt-0.5 text-xl font-bold text-slate-900">{shopName}</Text>
+            {shopAddress ? (
+              <Text className="mt-0.5 text-xs text-slate-400" numberOfLines={1}>
+                {shopAddress}
+              </Text>
+            ) : (
+              <Text className="mt-0.5 text-xs text-slate-400">{formatFullDate(now)}</Text>
+            )}
           </View>
           <View className="flex-row items-center gap-2">
             <View className="flex-row items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1.5">
               <View className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               <Text className="text-xs font-bold text-emerald-700">Open</Text>
             </View>
-            <TouchableOpacity className="h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
-              <Settings size={16} color="#64748B" strokeWidth={1.75} />
+            <TouchableOpacity
+              onPress={() => nav.navigate('DBBrowser')}
+              className="h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+              <Database size={16} color="#64748B" strokeWidth={1.75} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => nav.navigate('DBBrowser')}>
-              <Database size={16} color="#64748B" />
+            <TouchableOpacity
+              onPress={() => (nav as any).navigate('Reports', { screen: 'Settings' })}
+              className="h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+              <Settings size={16} color="#64748B" strokeWidth={1.75} />
             </TouchableOpacity>
           </View>
         </View>

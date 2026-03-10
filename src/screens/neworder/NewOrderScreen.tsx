@@ -13,7 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
   Search,
   X,
@@ -22,6 +22,7 @@ import {
   Plus,
   Minus,
   User,
+  Users,
   Truck,
   MapPin,
   Calendar,
@@ -122,6 +123,9 @@ export default function NewOrderScreen() {
   // Order state
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selCustomer, setSelCustomer] = useState<Customer | null>(null);
+  const [walkinName, setWalkinName] = useState('');
+  const [walkinPhone, setWalkinPhone] = useState('');
+  const [custTab, setCustTab] = useState<'walkin' | 'registered'>('walkin');
 
   // Pickup
   const [isPickup, setIsPickup] = useState(false);
@@ -148,13 +152,22 @@ export default function NewOrderScreen() {
   // Success
   const [success, setSuccess] = useState<Order | null>(null);
 
-  useEffect(() => {
-    Promise.all([dbGetServices(), dbGetAddons(), dbGetCustomers()]).then(([svcs, adns, custs]) => {
-      setServices(svcs);
-      setAddons(adns);
-      setCustomers(custs);
-    });
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      Promise.all([dbGetServices(), dbGetAddons(), dbGetCustomers()]).then(
+        ([svcs, adns, custs]) => {
+          setServices(svcs);
+          setAddons(adns);
+          setCustomers(custs);
+        }
+      );
+      // Auto-open customer modal so staff fills in name first
+      setCustModal(true);
+    }, [])
+  );
+
+  const hasCustomer =
+    selCustomer !== null || (walkinName.trim().length > 0 && walkinPhone.trim().length > 0);
 
   // ─── Cart helpers ─────────────────────────────────────────────────────────
 
@@ -225,8 +238,8 @@ export default function NewOrderScreen() {
     const order: Order = {
       id,
       customerId: selCustomer?.id ?? null,
-      customerName: selCustomer?.name ?? 'Walk-in Customer',
-      customerPhone: selCustomer?.phone ?? null,
+      customerName: (selCustomer?.name ?? walkinName.trim()) || 'Walk-in Customer',
+      customerPhone: (selCustomer?.phone ?? walkinPhone.trim()) || null,
       items: cart.map(
         (item, idx): OrderItem => ({
           id: generateId('itm'),
@@ -245,7 +258,7 @@ export default function NewOrderScreen() {
       deliveryFee: totals.deliveryFee,
       discount: totals.discount,
       total: totals.total,
-      amountPaid: Math.min(parseFloat(tendered) || 0, totals.total),
+      amountPaid: parseFloat(tendered) || 0,
       change: totals.change,
       paymentMethod: payMethod,
       status: 'pending',
@@ -273,6 +286,9 @@ export default function NewOrderScreen() {
     setCart([]);
     setSelCustomer(null);
     setStep(0);
+    setWalkinName('');
+    setWalkinPhone('');
+    setCustTab('walkin');
     setIsPickup(false);
     setPickupAddr('');
     setDeliveryAddr('');
@@ -350,17 +366,18 @@ export default function NewOrderScreen() {
           <View>
             <Text className="text-xl font-bold text-slate-900">New Order</Text>
             <Text className="text-xs text-slate-400" numberOfLines={1}>
-              {selCustomer ? selCustomer.name : 'Walk-in Customer'}
+              {selCustomer ? selCustomer.name : walkinName.trim() || 'No customer set'}
             </Text>
           </View>
           <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={() => setCustModal(true)}
               activeOpacity={0.8}
-              className="flex-row items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2">
-              <User size={13} color="#64748B" strokeWidth={1.75} />
-              <Text className="text-xs font-semibold text-slate-700">
-                {selCustomer ? 'Change' : 'Customer'}
+              className={`flex-row items-center gap-1.5 rounded-xl px-3 py-2 ${hasCustomer ? 'bg-slate-100' : 'border border-red-200 bg-red-50'}`}>
+              <User size={13} color={hasCustomer ? '#64748B' : '#EF4444'} strokeWidth={1.75} />
+              <Text
+                className={`text-xs font-semibold ${hasCustomer ? 'text-slate-700' : 'text-red-500'}`}>
+                {selCustomer ? selCustomer.name : walkinName.trim() || 'Required'}
               </Text>
             </TouchableOpacity>
             {cart.length > 0 && (
@@ -377,7 +394,34 @@ export default function NewOrderScreen() {
       <StepBar current={step} />
 
       {/* ── STEP 0: Services ────────────────────────────────────────────── */}
-      {step === 0 && (
+      {step === 0 && services.length === 0 && (
+        <View className="flex-1 items-center justify-center gap-4 px-8">
+          <View className="h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
+            <ShoppingCart size={28} color="#CBD5E1" strokeWidth={1.5} />
+          </View>
+          <View className="items-center gap-1">
+            <Text className="text-base font-bold text-slate-700">No Services Yet</Text>
+            <Text className="text-center text-sm text-slate-400">
+              Add your laundry services in Settings before creating an order.
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => (nav as any).navigate('Reports', { screen: 'Settings' })}
+            activeOpacity={0.85}
+            className="flex-row items-center gap-2 rounded-2xl bg-sky-500 px-6 py-3.5"
+            style={{
+              shadowColor: '#0EA5E9',
+              shadowOffset: { width: 0, height: 3 },
+              shadowOpacity: 0.25,
+              shadowRadius: 8,
+              elevation: 4,
+            }}>
+            <Text className="text-sm font-bold text-white">Go to Settings → Services</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {step === 0 && services.length > 0 && (
         <View className="flex-1">
           {/* Category chips */}
           <View className="border-b border-slate-100 bg-white">
@@ -487,12 +531,12 @@ export default function NewOrderScreen() {
               </Text>
               <TouchableOpacity
                 onPress={() => setStep(1)}
-                disabled={cart.length === 0}
+                disabled={cart.length === 0 || !hasCustomer}
                 activeOpacity={0.8}
-                className={`items-center rounded-xl py-2.5 ${cart.length > 0 ? 'bg-sky-500' : 'bg-slate-200'}`}>
+                className={`items-center rounded-xl py-2.5 ${cart.length > 0 && hasCustomer ? 'bg-sky-500' : 'bg-slate-200'}`}>
                 <Text
-                  className={`text-xs font-bold ${cart.length > 0 ? 'text-white' : 'text-slate-400'}`}>
-                  Next →
+                  className={`text-xs font-bold ${cart.length > 0 && hasCustomer ? 'text-white' : 'text-slate-400'}`}>
+                  {!hasCustomer ? 'Enter Customer' : 'Next →'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -655,7 +699,7 @@ export default function NewOrderScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
-                  setTendered(String(totals.total));
+                  setTendered('');
                   setStep(3);
                 }}
                 activeOpacity={0.8}
@@ -735,8 +779,8 @@ export default function NewOrderScreen() {
 
             {/* Payment method */}
             <Card className="p-4">
-              <SectionLabel title="Payment Method" className="mb-3" />
-              <View className="flex-row flex-wrap gap-2">
+              <SectionLabel title="Payment" className="mb-3" />
+              <View className="mb-3 flex-row flex-wrap gap-2">
                 {(['cash', 'gcash', 'maya', 'bank_transfer'] as const).map((method) => (
                   <TouchableOpacity
                     key={method}
@@ -750,26 +794,46 @@ export default function NewOrderScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-              {payMethod === 'cash' && (
-                <>
-                  <View className="mt-3">
-                    <Input
-                      label="Amount Tendered (₱)"
-                      placeholder="0.00"
-                      value={tendered}
-                      onChangeText={setTendered}
-                      keyboardType="numeric"
-                    />
+
+              <Input
+                label="Amount Received (₱)"
+                placeholder={`Full amount: ${formatPeso(totals.total)}`}
+                value={tendered}
+                onChangeText={setTendered}
+                keyboardType="numeric"
+              />
+
+              {/* Change — only when tendered > total */}
+              {parseFloat(tendered) > totals.total && totals.change > 0 && (
+                <View className="mt-2 flex-row items-center justify-between rounded-xl bg-emerald-50 px-3 py-2.5">
+                  <Text className="text-xs font-bold text-emerald-700">Change</Text>
+                  <Text className="text-base font-bold text-emerald-600">
+                    {formatPeso(totals.change)}
+                  </Text>
+                </View>
+              )}
+
+              {/* Balance due — when partial payment */}
+              {parseFloat(tendered) > 0 && parseFloat(tendered) < totals.total && (
+                <View className="mt-2 flex-row items-center justify-between rounded-xl bg-amber-50 px-3 py-2.5">
+                  <View>
+                    <Text className="text-xs font-bold text-amber-700">Balance Due</Text>
+                    <Text className="mt-0.5 text-xs text-amber-600">Collect before claiming</Text>
                   </View>
-                  {parseFloat(tendered) >= totals.total && totals.change > 0 && (
-                    <View className="flex-row items-center justify-between rounded-xl bg-emerald-50 px-3 py-2.5">
-                      <Text className="text-xs font-bold text-emerald-700">Change</Text>
-                      <Text className="text-base font-bold text-emerald-600">
-                        {formatPeso(totals.change)}
-                      </Text>
-                    </View>
-                  )}
-                </>
+                  <Text className="text-base font-bold text-amber-600">
+                    {formatPeso(totals.total - (parseFloat(tendered) || 0))}
+                  </Text>
+                </View>
+              )}
+
+              {/* No payment entered yet */}
+              {(!tendered || parseFloat(tendered) === 0) && (
+                <View className="mt-2 flex-row items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+                  <Text className="text-xs font-bold text-slate-500">Full Amount Due</Text>
+                  <Text className="text-base font-bold text-slate-700">
+                    {formatPeso(totals.total)}
+                  </Text>
+                </View>
               )}
             </Card>
 
@@ -817,62 +881,168 @@ export default function NewOrderScreen() {
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => setCustModal(false)}>
-        <View className="flex-1 bg-white pt-4">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          className="flex-1 bg-white pt-4">
+          {/* Header */}
           <View className="flex-row items-center justify-between border-b border-slate-100 px-4 pb-3">
-            <Text className="text-lg font-bold text-slate-900">Select Customer</Text>
+            <Text className="text-lg font-bold text-slate-900">Customer</Text>
             <TouchableOpacity
               onPress={() => setCustModal(false)}
               className="h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
               <X size={15} color="#64748B" />
             </TouchableOpacity>
           </View>
-          <View className="px-4 py-3">
-            <View className="flex-row items-center gap-2 rounded-xl bg-slate-100 px-3">
-              <Search size={14} color="#94A3B8" />
-              <TextInput
-                value={custSearch}
-                onChangeText={setCustSearch}
-                placeholder="Search name or phone…"
-                placeholderTextColor="#94A3B8"
-                className="flex-1 py-2.5 text-sm text-slate-800"
-              />
-            </View>
-          </View>
-          <FlatList
-            data={[null, ...filteredCusts]}
-            keyExtractor={(c) => c?.id ?? 'walkin'}
-            contentContainerClassName="px-4 pb-6"
-            renderItem={({ item: c }) => (
+
+          {/* Tabs */}
+          <View className="flex-row border-b border-slate-100">
+            {(['walkin', 'registered'] as const).map((tab) => (
               <TouchableOpacity
-                onPress={() => {
-                  setSelCustomer(c);
-                  setCustModal(false);
-                  setCustSearch('');
-                }}
-                activeOpacity={0.75}
-                className="flex-row items-center gap-3 border-b border-slate-100 py-3">
-                {c ? (
-                  <Avatar name={c.name} size="md" />
-                ) : (
-                  <View className="h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
-                    <User size={16} color="#94A3B8" />
-                  </View>
-                )}
-                <View className="flex-1">
-                  <Text className="text-sm font-semibold text-slate-800">
-                    {c ? c.name : 'Walk-in Customer'}
-                  </Text>
-                  {c && <Text className="mt-0.5 text-xs text-slate-400">{c.phone}</Text>}
-                </View>
-                {c && (
-                  <View className="rounded-lg bg-amber-50 px-2 py-1">
-                    <Text className="text-xs font-bold text-amber-600">{c.loyaltyPoints} pts</Text>
-                  </View>
+                key={tab}
+                onPress={() => setCustTab(tab)}
+                activeOpacity={0.7}
+                className="relative flex-1 items-center py-3">
+                <Text
+                  className={`text-xs font-bold capitalize ${custTab === tab ? 'text-sky-500' : 'text-slate-400'}`}>
+                  {tab === 'walkin' ? 'Walk-in' : 'Registered'}
+                </Text>
+                {custTab === tab && (
+                  <View className="absolute bottom-0 left-6 right-6 h-0.5 rounded-full bg-sky-500" />
                 )}
               </TouchableOpacity>
-            )}
-          />
-        </View>
+            ))}
+          </View>
+
+          {/* ── Walk-in Tab ── */}
+          {custTab === 'walkin' && (
+            <View className="flex-1 gap-4 p-4">
+              <View className="rounded-xl bg-sky-50 px-4 py-3">
+                <Text className="text-xs font-semibold text-sky-700">
+                  Enter the customer's name and phone number to identify this order. Not saved to
+                  the customers list.
+                </Text>
+              </View>
+
+              <View>
+                <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Customer Name *
+                </Text>
+                <View className="flex-row items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
+                  <User size={14} color="#94A3B8" strokeWidth={1.75} />
+                  <TextInput
+                    value={walkinName}
+                    onChangeText={setWalkinName}
+                    placeholder="e.g. Juan dela Cruz"
+                    placeholderTextColor="#94A3B8"
+                    className="flex-1 py-3 text-sm text-slate-800"
+                    autoFocus
+                    autoCapitalize="words"
+                  />
+                </View>
+              </View>
+
+              <View>
+                <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Phone Number *
+                </Text>
+                <View className="flex-row items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
+                  <Text className="text-sm text-slate-400">📱</Text>
+                  <TextInput
+                    value={walkinPhone}
+                    onChangeText={setWalkinPhone}
+                    placeholder="09XXXXXXXXX"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="phone-pad"
+                    className="flex-1 py-3 text-sm text-slate-800"
+                  />
+                </View>
+              </View>
+
+              <View className="mt-auto pb-4">
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelCustomer(null);
+                    setCustModal(false);
+                    setCustSearch('');
+                  }}
+                  disabled={!walkinName.trim() || !walkinPhone.trim()}
+                  activeOpacity={0.85}
+                  className={`items-center rounded-2xl py-4 ${walkinName.trim() && walkinPhone.trim() ? 'bg-sky-500' : 'bg-slate-200'}`}
+                  style={
+                    walkinName.trim() && walkinPhone.trim()
+                      ? {
+                          shadowColor: '#0EA5E9',
+                          shadowOffset: { width: 0, height: 3 },
+                          shadowOpacity: 0.25,
+                          shadowRadius: 8,
+                          elevation: 4,
+                        }
+                      : {}
+                  }>
+                  <Text
+                    className={`text-sm font-bold ${walkinName.trim() && walkinPhone.trim() ? 'text-white' : 'text-slate-400'}`}>
+                    Confirm Walk-in
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* ── Registered Tab ── */}
+          {custTab === 'registered' && (
+            <View className="flex-1">
+              <View className="px-4 py-3">
+                <View className="flex-row items-center gap-2 rounded-xl bg-slate-100 px-3">
+                  <Search size={14} color="#94A3B8" />
+                  <TextInput
+                    value={custSearch}
+                    onChangeText={setCustSearch}
+                    placeholder="Search name or phone…"
+                    placeholderTextColor="#94A3B8"
+                    className="flex-1 py-2.5 text-sm text-slate-800"
+                  />
+                </View>
+              </View>
+              <FlatList
+                data={filteredCusts}
+                keyExtractor={(c) => c.id}
+                contentContainerClassName="px-4 pb-6"
+                ListEmptyComponent={
+                  <View className="items-center gap-2 py-12">
+                    <Users size={28} color="#CBD5E1" strokeWidth={1.5} />
+                    <Text className="text-sm font-bold text-slate-400">No customers found</Text>
+                    <Text className="text-xs text-slate-400">
+                      Add customers in the Customers tab
+                    </Text>
+                  </View>
+                }
+                renderItem={({ item: c }) => (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelCustomer(c);
+                      setWalkinName('');
+                      setWalkinPhone('');
+                      setCustModal(false);
+                      setCustSearch('');
+                    }}
+                    activeOpacity={0.75}
+                    className="flex-row items-center gap-3 border-b border-slate-100 py-3">
+                    <Avatar name={c.name} size="md" />
+                    <View className="flex-1">
+                      <Text className="text-sm font-semibold text-slate-800">{c.name}</Text>
+                      <Text className="mt-0.5 text-xs text-slate-400">{c.phone}</Text>
+                    </View>
+                    <View className="rounded-lg bg-amber-50 px-2 py-1">
+                      <Text className="text-xs font-bold text-amber-600">
+                        {c.loyaltyPoints} pts
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          )}
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Qty Modal ───────────────────────────────────────────────────── */}
