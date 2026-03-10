@@ -6,12 +6,23 @@ import { ChevronLeft, Plus, X, Check, Trash2, TrendingDown } from 'lucide-react-
 
 import { dbGetExpenses, dbInsertExpense, dbDeleteExpense } from '../../db';
 import { formatPeso, formatDate, generateId } from '../../utils';
-import { Card, SectionLabel, Input, LoadingScreen } from '@/components/common';
+import { Card, SectionLabel, Input, LoadingScreen } from '../../components/common';
 import { EXPENSE_CATEGORIES } from '../../constants';
+import { useAuth } from '../../auth/AuthContext';
 import type { Expense, ExpenseCategory } from '../../types';
 
 export default function ExpensesScreen() {
   const nav = useNavigation();
+  const { user } = useAuth();
+
+  // Hard guard — staff cannot access this screen
+  React.useEffect(() => {
+    if (user?.role !== 'owner') {
+      nav.goBack();
+    }
+  }, [user]);
+
+  if (user?.role !== 'owner') return null;
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);

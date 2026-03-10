@@ -16,7 +16,7 @@ import {
   ActivityIndicator,
   StatusBar,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import {
   Database,
   Table2,
@@ -33,6 +33,7 @@ import {
 
 import { getDb } from '../../db';
 import { TABLES } from '../../constants';
+import { useAuth } from '../../auth/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -345,10 +346,19 @@ function TableViewerModal({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function DBBrowserScreen() {
+  const nav = useNavigation();
+  const { user } = useAuth();
   const [tables, setTables] = useState<TableMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<TableMeta | null>(null);
   const [wiping, setWiping] = useState(false);
+
+  // Hard guard — owner only
+  React.useEffect(() => {
+    if (user?.role !== 'owner') nav.goBack();
+  }, [user]);
+
+  if (user?.role !== 'owner') return null;
 
   const load = useCallback(async () => {
     setLoading(true);

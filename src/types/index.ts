@@ -160,6 +160,8 @@ export interface ShopSettings {
   pickupEnabled: boolean;
   expressMultiplier: number;
   receiptFooter: string;
+  ownerPin: string;
+  staffPin: string;
 }
 
 // ─── Reports / Stats ─────────────────────────────────────────────────────────

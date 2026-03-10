@@ -24,6 +24,7 @@ import { dbGetDashboardStats, dbGetOrders, dbGetSettings } from '../../db';
 import { formatPeso, formatRelativeTime, getGreeting, formatFullDate } from '../../utils';
 import { StatusBadge, Card, Avatar, SectionLabel, LoadingScreen } from '../../components/common';
 import type { DashboardStackParams } from '../../navigation/types';
+import { useAuth } from '../../auth/AuthContext';
 import type { Order } from '../../types';
 
 type Nav = NativeStackNavigationProp<DashboardStackParams, 'DashboardHome'>;
@@ -92,6 +93,7 @@ function OrderRow({ order, onPress }: { order: Order; onPress: () => void }) {
 
 export default function DashboardScreen() {
   const nav = useNavigation<Nav>();
+  const { user } = useAuth();
   const [stats, setStats] = useState<Awaited<ReturnType<typeof dbGetDashboardStats>> | null>(null);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,20 +152,29 @@ export default function DashboardScreen() {
             )}
           </View>
           <View className="flex-row items-center gap-2">
-            <View className="flex-row items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1.5">
-              <View className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              <Text className="text-xs font-bold text-emerald-700">Open</Text>
+            {/* Role badge */}
+            <View
+              className={`flex-row items-center gap-1.5 rounded-full px-2.5 py-1.5 ${user?.role === 'owner' ? 'bg-sky-50' : 'bg-slate-100'}`}>
+              <Text className="text-sm">{user?.role === 'owner' ? '👑' : '👷'}</Text>
+              <Text
+                className={`text-xs font-bold ${user?.role === 'owner' ? 'text-sky-700' : 'text-slate-500'}`}>
+                {user?.role === 'owner' ? 'Owner' : 'Staff'}
+              </Text>
             </View>
-            <TouchableOpacity
-              onPress={() => nav.navigate('DBBrowser')}
-              className="h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
-              <Database size={16} color="#64748B" strokeWidth={1.75} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => (nav as any).navigate('Reports', { screen: 'Settings' })}
-              className="h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
-              <Settings size={16} color="#64748B" strokeWidth={1.75} />
-            </TouchableOpacity>
+            {/* {user?.role === 'owner' && (
+              <TouchableOpacity
+                onPress={() => nav.navigate('DBBrowser')}
+                className="h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+                <Database size={16} color="#64748B" strokeWidth={1.75} />
+              </TouchableOpacity>
+            )} */}
+            {user?.role === 'owner' && (
+              <TouchableOpacity
+                onPress={() => (nav as any).navigate('Reports', { screen: 'Settings' })}
+                className="h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+                <Settings size={16} color="#64748B" strokeWidth={1.75} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>

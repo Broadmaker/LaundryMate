@@ -27,8 +27,8 @@ import {
 
 import { dbGetCustomers, dbInsertCustomer } from '../../db';
 import { formatDate, generateId, isValidPhilippinePhone } from '../../utils';
-import { Avatar, EmptyState, Input, Card } from '@/components/common';
-import type { CustomersStackParams } from '../../navigation/RootNavigator';
+import { Avatar, EmptyState, Input, Card, ModalSheet } from '../../components/common';
+import type { CustomersStackParams } from '../../navigation/types';
 import type { Customer } from '../../types';
 
 type Nav = NativeStackNavigationProp<CustomersStackParams, 'CustomersList'>;
@@ -189,7 +189,7 @@ export default function CustomersScreen() {
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => setShowAdd(false)}>
-        <View className="flex-1 bg-white pt-4">
+        <ModalSheet>
           <View className="flex-row items-center justify-between border-b border-slate-100 px-4 pb-3">
             <Text className="text-lg font-bold text-slate-900">New Customer</Text>
             <TouchableOpacity
@@ -246,7 +246,7 @@ export default function CustomersScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </ModalSheet>
       </Modal>
     </View>
   );

@@ -17,7 +17,7 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import {
   Store,
   Wrench,
@@ -35,7 +35,13 @@ import {
   Tag,
   DollarSign,
   Package,
+  ShieldCheck,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react-native';
+
+import { useAuth } from '../../auth/AuthContext';
 
 import {
   dbGetSettings,
@@ -51,7 +57,14 @@ import {
 } from '../../db';
 import { generateId, formatPeso } from '../../utils';
 import { SERVICE_CATEGORIES } from '../../constants';
-import { Card, SectionLabel, Divider, LoadingScreen, ToggleSwitch } from '../../components/common';
+import {
+  Card,
+  SectionLabel,
+  Divider,
+  LoadingScreen,
+  ToggleSwitch,
+  ModalSheet,
+} from '../../components/common';
 import type { Service, Addon, ShopSettings } from '../../types';
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
@@ -108,166 +121,166 @@ function ServiceFormModal({ existing, onSave, onClose }: ServiceFormProps) {
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        className="flex-1 bg-white">
-        {/* Header */}
-        <View className="flex-row items-center justify-between border-b border-slate-100 px-4 pb-3 pt-5">
-          <Text className="text-lg font-bold text-slate-900">
-            {existing ? 'Edit Service' : 'New Service'}
-          </Text>
-          <TouchableOpacity
-            onPress={onClose}
-            className="h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
-            <X size={14} color="#64748B" />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView className="flex-1 p-4" contentContainerClassName="gap-4 pb-10">
-          {/* Name */}
-          <View>
-            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Service Name *
+        className="flex-1">
+        <ModalSheet>
+          {/* Header */}
+          <View className="flex-row items-center justify-between border-b border-slate-100 px-4 pb-3">
+            <Text className="text-lg font-bold text-slate-900">
+              {existing ? 'Edit Service' : 'New Service'}
             </Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Wash & Fold"
-              placeholderTextColor="#94A3B8"
-              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
-            />
+            <TouchableOpacity
+              onPress={onClose}
+              className="h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
+              <X size={14} color="#64748B" />
+            </TouchableOpacity>
           </View>
 
-          {/* Price + Unit row */}
-          <View className="flex-row gap-3">
-            <View className="flex-1">
+          <ScrollView className="flex-1 p-4" contentContainerClassName="gap-4 pb-10">
+            {/* Name */}
+            <View>
               <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-                Price (₱) *
+                Service Name *
               </Text>
               <TextInput
-                value={price}
-                onChangeText={setPrice}
-                keyboardType="numeric"
-                placeholder="0.00"
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g. Wash & Fold"
                 placeholderTextColor="#94A3B8"
                 className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
               />
             </View>
-            <View className="flex-1">
+
+            {/* Price + Unit row */}
+            <View className="flex-row gap-3">
+              <View className="flex-1">
+                <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Price (₱) *
+                </Text>
+                <TextInput
+                  value={price}
+                  onChangeText={setPrice}
+                  keyboardType="numeric"
+                  placeholder="0.00"
+                  placeholderTextColor="#94A3B8"
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
+                />
+              </View>
+              <View className="flex-1">
+                <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Unit
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View className="flex-row gap-1.5">
+                    {UNITS.map((u) => (
+                      <TouchableOpacity
+                        key={u}
+                        onPress={() => setUnit(u)}
+                        className={`rounded-xl border px-3 py-2.5 ${unit === u ? 'border-sky-500 bg-sky-500' : 'border-slate-200 bg-white'}`}>
+                        <Text
+                          className={`text-xs font-bold ${unit === u ? 'text-white' : 'text-slate-600'}`}>
+                          {u}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+            </View>
+
+            {/* Category */}
+            <View>
               <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-                Unit
+                Category
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View className="flex-row gap-1.5">
-                  {UNITS.map((u) => (
-                    <TouchableOpacity
-                      key={u}
-                      onPress={() => setUnit(u)}
-                      className={`rounded-xl border px-3 py-2.5 ${unit === u ? 'border-sky-500 bg-sky-500' : 'border-slate-200 bg-white'}`}>
-                      <Text
-                        className={`text-xs font-bold ${unit === u ? 'text-white' : 'text-slate-600'}`}>
-                        {u}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
+              <View className="flex-row flex-wrap gap-2">
+                {SERVICE_CATEGORIES.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    onPress={() => setCategory(cat.id)}
+                    className={`rounded-xl border px-3 py-2 ${category === cat.id ? 'border-sky-500 bg-sky-500' : 'border-slate-200 bg-white'}`}>
+                    <Text
+                      className={`text-xs font-bold capitalize ${category === cat.id ? 'text-white' : 'text-slate-600'}`}>
+                      {cat.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
 
-          {/* Category */}
-          <View>
-            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Category
-            </Text>
-            <View className="flex-row flex-wrap gap-2">
-              {SERVICE_CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat.id}
-                  onPress={() => setCategory(cat.id)}
-                  className={`rounded-xl border px-3 py-2 ${category === cat.id ? 'border-sky-500 bg-sky-500' : 'border-slate-200 bg-white'}`}>
-                  <Text
-                    className={`text-xs font-bold capitalize ${category === cat.id ? 'text-white' : 'text-slate-600'}`}>
-                    {cat.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {/* Duration */}
+            <View>
+              <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                Duration
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {DURATIONS.map((d) => (
+                  <TouchableOpacity
+                    key={d}
+                    onPress={() => setDuration(d)}
+                    className={`rounded-xl border px-3 py-2 ${duration === d ? 'border-sky-500 bg-sky-500' : 'border-slate-200 bg-white'}`}>
+                    <Text
+                      className={`text-xs font-bold ${duration === d ? 'text-white' : 'text-slate-600'}`}>
+                      {d}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
 
-          {/* Duration */}
-          <View>
-            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Duration
-            </Text>
-            <View className="flex-row flex-wrap gap-2">
-              {DURATIONS.map((d) => (
-                <TouchableOpacity
-                  key={d}
-                  onPress={() => setDuration(d)}
-                  className={`rounded-xl border px-3 py-2 ${duration === d ? 'border-sky-500 bg-sky-500' : 'border-slate-200 bg-white'}`}>
-                  <Text
-                    className={`text-xs font-bold ${duration === d ? 'text-white' : 'text-slate-600'}`}>
-                    {d}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {/* Description */}
+            <View>
+              <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                Description (optional)
+              </Text>
+              <TextInput
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Short description…"
+                placeholderTextColor="#94A3B8"
+                multiline
+                numberOfLines={2}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
+              />
             </View>
-          </View>
 
-          {/* Description */}
-          <View>
-            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Description (optional)
-            </Text>
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Short description…"
-              placeholderTextColor="#94A3B8"
-              multiline
-              numberOfLines={2}
-              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
-            />
-          </View>
+            {/* Active toggle */}
+            <View className="flex-row items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+              <Text className="text-sm font-semibold text-slate-700">
+                Active (visible in New Order)
+              </Text>
+              <ToggleSwitch value={isActive} onChange={setIsActive} />
+            </View>
+          </ScrollView>
 
-          {/* Active toggle */}
-          <View className="flex-row items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-            <Text className="text-sm font-semibold text-slate-700">
-              Active (visible in New Order)
-            </Text>
-            <ToggleSwitch value={isActive} onChange={setIsActive} />
+          {/* Footer */}
+          <View className="flex-row gap-3 border-t border-slate-100 px-4 pb-8 pt-3">
+            <TouchableOpacity
+              onPress={onClose}
+              className="flex-1 items-center rounded-2xl bg-slate-100 py-4">
+              <Text className="text-sm font-semibold text-slate-700">Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSave}
+              disabled={!isValid || saving}
+              activeOpacity={0.85}
+              className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 ${isValid && !saving ? 'bg-sky-500' : 'bg-slate-200'}`}
+              style={{ flex: 2 }}>
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Check size={15} color={isValid ? '#fff' : '#94A3B8'} strokeWidth={2.5} />
+              )}
+              <Text
+                className={`text-sm font-bold ${isValid && !saving ? 'text-white' : 'text-slate-400'}`}>
+                Save Service
+              </Text>
+            </TouchableOpacity>
           </View>
-        </ScrollView>
-
-        {/* Footer */}
-        <View className="flex-row gap-3 border-t border-slate-100 px-4 pb-8 pt-3">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 items-center rounded-2xl bg-slate-100 py-4">
-            <Text className="text-sm font-semibold text-slate-700">Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={!isValid || saving}
-            activeOpacity={0.85}
-            className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 ${isValid && !saving ? 'bg-sky-500' : 'bg-slate-200'}`}
-            style={{ flex: 2 }}>
-            {saving ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Check size={15} color={isValid ? '#fff' : '#94A3B8'} strokeWidth={2.5} />
-            )}
-            <Text
-              className={`text-sm font-bold ${isValid && !saving ? 'text-white' : 'text-slate-400'}`}>
-              Save Service
-            </Text>
-          </TouchableOpacity>
-        </View>
+        </ModalSheet>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
-
-// ─── Addon Form Modal ─────────────────────────────────────────────────────────
 
 interface AddonFormProps {
   existing?: Addon;
@@ -300,84 +313,86 @@ function AddonFormModal({ existing, onSave, onClose }: AddonFormProps) {
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        className="flex-1 bg-white">
-        <View className="flex-row items-center justify-between border-b border-slate-100 px-4 pb-3 pt-5">
-          <Text className="text-lg font-bold text-slate-900">
-            {existing ? 'Edit Add-on' : 'New Add-on'}
-          </Text>
-          <TouchableOpacity
-            onPress={onClose}
-            className="h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
-            <X size={14} color="#64748B" />
-          </TouchableOpacity>
-        </View>
+        className="flex-1">
+        <ModalSheet>
+          <View className="flex-row items-center justify-between border-b border-slate-100 px-4 pb-3 pt-2">
+            <Text className="text-lg font-bold text-slate-900">
+              {existing ? 'Edit Add-on' : 'New Add-on'}
+            </Text>
+            <TouchableOpacity
+              onPress={onClose}
+              className="h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
+              <X size={14} color="#64748B" />
+            </TouchableOpacity>
+          </View>
 
-        <View className="gap-4 p-4">
-          <View>
-            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Add-on Name *
-            </Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Fabric Softener"
-              placeholderTextColor="#94A3B8"
-              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
-              autoFocus
-            />
+          <View className="gap-4 p-4">
+            <View>
+              <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                Add-on Name *
+              </Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g. Fabric Softener"
+                placeholderTextColor="#94A3B8"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
+                autoFocus
+              />
+            </View>
+            <View>
+              <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                Price (₱) *
+              </Text>
+              <TextInput
+                value={price}
+                onChangeText={setPrice}
+                keyboardType="numeric"
+                placeholder="0.00"
+                placeholderTextColor="#94A3B8"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
+              />
+            </View>
+            <View>
+              <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                Description (optional)
+              </Text>
+              <TextInput
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Short description…"
+                placeholderTextColor="#94A3B8"
+                multiline
+                numberOfLines={2}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
+              />
+            </View>
           </View>
-          <View>
-            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Price (₱) *
-            </Text>
-            <TextInput
-              value={price}
-              onChangeText={setPrice}
-              keyboardType="numeric"
-              placeholder="0.00"
-              placeholderTextColor="#94A3B8"
-              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
-            />
-          </View>
-          <View>
-            <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Description (optional)
-            </Text>
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Short description…"
-              placeholderTextColor="#94A3B8"
-              multiline
-              numberOfLines={2}
-              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800"
-            />
-          </View>
-        </View>
 
-        <View className="mt-auto flex-row gap-3 border-t border-slate-100 px-4 pb-8 pt-3">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 items-center rounded-2xl bg-slate-100 py-4">
-            <Text className="text-sm font-semibold text-slate-700">Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={!isValid || saving}
-            activeOpacity={0.85}
-            className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 ${isValid && !saving ? 'bg-sky-500' : 'bg-slate-200'}`}
-            style={{ flex: 2 }}>
-            {saving ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Check size={15} color={isValid ? '#fff' : '#94A3B8'} strokeWidth={2.5} />
-            )}
-            <Text
-              className={`text-sm font-bold ${isValid && !saving ? 'text-white' : 'text-slate-400'}`}>
-              Save Add-on
-            </Text>
-          </TouchableOpacity>
-        </View>
+          <View className="mt-auto flex-row gap-3 border-t border-slate-100 px-4 pb-8 pt-3">
+            <TouchableOpacity
+              onPress={onClose}
+              className="flex-1 items-center rounded-2xl bg-slate-100 py-4">
+              <Text className="text-sm font-semibold text-slate-700">Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSave}
+              disabled={!isValid || saving}
+              activeOpacity={0.85}
+              className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 ${isValid && !saving ? 'bg-sky-500' : 'bg-slate-200'}`}
+              style={{ flex: 2 }}>
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Check size={15} color={isValid ? '#fff' : '#94A3B8'} strokeWidth={2.5} />
+              )}
+              <Text
+                className={`text-sm font-bold ${isValid && !saving ? 'text-white' : 'text-slate-400'}`}>
+                Save Add-on
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ModalSheet>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -386,6 +401,7 @@ function AddonFormModal({ existing, onSave, onClose }: AddonFormProps) {
 // ─── Shop Info Tab ────────────────────────────────────────────────────────────
 
 function ShopInfoTab() {
+  const { savePin, removePin, ownerPinSet, staffPinSet } = useAuth();
   const [settings, setSettings] = useState<Partial<ShopSettings>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -394,6 +410,14 @@ function ShopInfoTab() {
   const [address, setAddress] = useState('');
   const [loyalty, setLoyalty] = useState(false);
   const [pickup, setPickup] = useState(false);
+
+  // PIN state
+  const [pinModal, setPinModal] = useState<'owner' | 'staff' | null>(null);
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [pinError, setPinError] = useState('');
+  const [pinSaving, setPinSaving] = useState(false);
 
   useEffect(() => {
     dbGetSettings().then((s) => {
@@ -416,6 +440,25 @@ function ShopInfoTab() {
     await dbSetSetting('pickupEnabled', pickup);
     setSaving(false);
     Alert.alert('Saved', 'Shop settings updated.');
+  };
+
+  const handleSavePin = async () => {
+    if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+      setPinError('PIN must be exactly 4 digits');
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinError('PINs do not match');
+      return;
+    }
+    setPinSaving(true);
+    await savePin(pinModal!, newPin);
+    setPinSaving(false);
+    setPinModal(null);
+    setNewPin('');
+    setConfirmPin('');
+    setPinError('');
+    Alert.alert('PIN Saved', `${pinModal === 'owner' ? 'Owner' : 'Staff'} PIN updated.`);
   };
 
   if (loading) return <LoadingScreen />;
@@ -465,7 +508,6 @@ function ShopInfoTab() {
 
       <Card className="gap-0 p-4">
         <SectionLabel title="Features" className="mb-3" />
-
         <View className="flex-row items-center justify-between border-b border-slate-100 py-3">
           <View className="mr-4 flex-1">
             <Text className="text-sm font-semibold text-slate-800">Loyalty Points</Text>
@@ -473,7 +515,6 @@ function ShopInfoTab() {
           </View>
           <ToggleSwitch value={loyalty} onChange={setLoyalty} />
         </View>
-
         <View className="flex-row items-center justify-between pt-3">
           <View className="mr-4 flex-1">
             <Text className="text-sm font-semibold text-slate-800">Pickup & Delivery</Text>
@@ -483,6 +524,71 @@ function ShopInfoTab() {
           </View>
           <ToggleSwitch value={pickup} onChange={setPickup} />
         </View>
+      </Card>
+
+      {/* PIN Management — Owner only */}
+      <Card className="p-4">
+        <View className="mb-3 flex-row items-center gap-2">
+          <ShieldCheck size={15} color="#0EA5E9" strokeWidth={2} />
+          <SectionLabel title="Access PINs" />
+        </View>
+
+        {[
+          {
+            role: 'owner' as const,
+            label: 'Owner PIN',
+            desc: 'Full access — all features',
+            set: ownerPinSet,
+          },
+          {
+            role: 'staff' as const,
+            label: 'Staff PIN',
+            desc: 'New Order, Orders, Customers, Reports',
+            set: staffPinSet,
+          },
+        ].map(({ role, label, desc, set }, i, arr) => (
+          <View
+            key={role}
+            className={`flex-row items-center justify-between py-3 ${i < arr.length - 1 ? 'border-b border-slate-100' : ''}`}>
+            <View className="mr-3 flex-1">
+              <View className="flex-row items-center gap-2">
+                <Text className="text-sm font-semibold text-slate-800">{label}</Text>
+                <View
+                  className={`rounded-full px-2 py-0.5 ${set ? 'bg-emerald-50' : 'bg-slate-100'}`}>
+                  <Text
+                    className={`text-xs font-bold ${set ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {set ? 'Set' : 'Not set'}
+                  </Text>
+                </View>
+              </View>
+              <Text className="mt-0.5 text-xs text-slate-400">{desc}</Text>
+            </View>
+            <View className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={() => {
+                  setPinModal(role);
+                  setNewPin('');
+                  setConfirmPin('');
+                  setPinError('');
+                }}
+                className="rounded-xl bg-sky-50 px-3 py-2">
+                <Text className="text-xs font-bold text-sky-600">{set ? 'Change' : 'Set PIN'}</Text>
+              </TouchableOpacity>
+              {set && (
+                <TouchableOpacity
+                  onPress={() =>
+                    Alert.alert(`Remove ${label}`, 'This will prevent login with this PIN.', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Remove', style: 'destructive', onPress: () => removePin(role) },
+                    ])
+                  }
+                  className="rounded-xl bg-red-50 px-3 py-2">
+                  <Text className="text-xs font-bold text-red-500">Remove</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        ))}
       </Card>
 
       <TouchableOpacity
@@ -504,6 +610,126 @@ function ShopInfoTab() {
         )}
         <Text className="text-sm font-bold text-white">Save Settings</Text>
       </TouchableOpacity>
+
+      {/* ── PIN Setup Modal ── */}
+      <Modal
+        visible={!!pinModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPinModal(null)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          className="flex-1">
+          <ModalSheet>
+            <View className="flex-row items-center justify-between border-b border-slate-100 px-4 pb-3">
+              <Text className="text-lg font-bold text-slate-900">
+                {pinModal === 'owner' ? 'Owner PIN' : 'Staff PIN'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setPinModal(null)}
+                className="h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
+                <X size={14} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View className="gap-4 p-4">
+              <View className="rounded-xl bg-sky-50 px-4 py-3">
+                <Text className="text-xs font-semibold text-sky-700">
+                  {pinModal === 'owner'
+                    ? 'Owner PIN gives full access to all features including Settings.'
+                    : 'Staff PIN gives access to New Order, Orders, Customers, and Reports only.'}
+                </Text>
+              </View>
+
+              {/* New PIN */}
+              <View>
+                <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                  New PIN (4 digits)
+                </Text>
+                <View className="flex-row items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
+                  <KeyRound size={14} color="#94A3B8" strokeWidth={1.75} />
+                  <TextInput
+                    value={newPin}
+                    onChangeText={(t) => {
+                      setNewPin(t.replace(/\D/g, '').slice(0, 4));
+                      setPinError('');
+                    }}
+                    keyboardType="number-pad"
+                    secureTextEntry={!showPin}
+                    maxLength={4}
+                    placeholder="····"
+                    placeholderTextColor="#94A3B8"
+                    className="flex-1 py-3 text-sm tracking-widest text-slate-800"
+                    autoFocus
+                  />
+                  <TouchableOpacity onPress={() => setShowPin((v) => !v)}>
+                    {showPin ? (
+                      <EyeOff size={14} color="#94A3B8" />
+                    ) : (
+                      <Eye size={14} color="#94A3B8" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Confirm PIN */}
+              <View>
+                <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Confirm PIN
+                </Text>
+                <View className="flex-row items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
+                  <KeyRound size={14} color="#94A3B8" strokeWidth={1.75} />
+                  <TextInput
+                    value={confirmPin}
+                    onChangeText={(t) => {
+                      setConfirmPin(t.replace(/\D/g, '').slice(0, 4));
+                      setPinError('');
+                    }}
+                    keyboardType="number-pad"
+                    secureTextEntry={!showPin}
+                    maxLength={4}
+                    placeholder="····"
+                    placeholderTextColor="#94A3B8"
+                    className="flex-1 py-3 text-sm tracking-widest text-slate-800"
+                  />
+                </View>
+              </View>
+
+              {pinError ? (
+                <Text className="text-xs font-semibold text-red-500">{pinError}</Text>
+              ) : null}
+            </View>
+
+            <View className="mt-auto flex-row gap-3 border-t border-slate-100 px-4 pb-10 pt-3">
+              <TouchableOpacity
+                onPress={() => setPinModal(null)}
+                className="flex-1 items-center rounded-2xl bg-slate-100 py-4">
+                <Text className="text-sm font-semibold text-slate-700">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSavePin}
+                disabled={newPin.length !== 4 || confirmPin.length !== 4 || pinSaving}
+                activeOpacity={0.85}
+                className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 ${newPin.length === 4 && confirmPin.length === 4 ? 'bg-sky-500' : 'bg-slate-200'}`}
+                style={{ flex: 2 }}>
+                {pinSaving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Check
+                    size={15}
+                    color={newPin.length === 4 && confirmPin.length === 4 ? '#fff' : '#94A3B8'}
+                    strokeWidth={2.5}
+                  />
+                )}
+                <Text
+                  className={`text-sm font-bold ${newPin.length === 4 && confirmPin.length === 4 ? 'text-white' : 'text-slate-400'}`}>
+                  Save PIN
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ModalSheet>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
   );
 }
@@ -847,7 +1073,16 @@ function AddonsTab() {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
+  const nav = useNavigation();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('shop');
+
+  // Hard guard — staff cannot access this screen
+  React.useEffect(() => {
+    if (user?.role !== 'owner') nav.goBack();
+  }, [user]);
+
+  if (user?.role !== 'owner') return null;
 
   return (
     <View className="flex-1 bg-slate-50">

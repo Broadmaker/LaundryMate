@@ -502,9 +502,12 @@ export async function dbGetDashboardStats() {
   const db    = await getDb();
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
+  // Revenue = SUM of order totals (what was charged), excluding cancelled orders.
+  // We use `total` not `amount_paid` — partial payments don't reduce revenue.
   const todayRow = await db.getFirstAsync<any>(
-    `SELECT COUNT(*) as order_count, COALESCE(SUM(amount_paid), 0) as revenue
-     FROM ${TABLES.orders} WHERE created_at >= ? AND amount_paid > 0`,
+    `SELECT COUNT(*) as order_count, COALESCE(SUM(total), 0) as revenue
+     FROM ${TABLES.orders}
+     WHERE created_at >= ? AND status != 'cancelled'`,
     [today.toISOString()]
   );
   const pendingRow = await db.getFirstAsync<any>(
@@ -519,14 +522,16 @@ export async function dbGetDashboardStats() {
   );
   const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7); weekStart.setHours(0, 0, 0, 0);
   const weekRow = await db.getFirstAsync<any>(
-    `SELECT COALESCE(SUM(amount_paid), 0) as revenue
-     FROM ${TABLES.orders} WHERE created_at >= ? AND amount_paid > 0`,
+    `SELECT COALESCE(SUM(total), 0) as revenue
+     FROM ${TABLES.orders}
+     WHERE created_at >= ? AND status != 'cancelled'`,
     [weekStart.toISOString()]
   );
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
   const monthRow = await db.getFirstAsync<any>(
-    `SELECT COALESCE(SUM(amount_paid), 0) as revenue
-     FROM ${TABLES.orders} WHERE created_at >= ? AND amount_paid > 0`,
+    `SELECT COALESCE(SUM(total), 0) as revenue
+     FROM ${TABLES.orders}
+     WHERE created_at >= ? AND status != 'cancelled'`,
     [monthStart.toISOString()]
   );
   const customersRow = await db.getFirstAsync<any>(

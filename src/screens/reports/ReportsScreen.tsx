@@ -10,6 +10,7 @@ import { formatPeso } from '../../utils';
 import { Card, SectionLabel, LoadingScreen } from '../../components/common';
 import { EXPENSE_CATEGORIES } from '../../constants';
 import type { ReportsStackParams } from '../../navigation/types';
+import { useAuth } from '../../auth/AuthContext';
 import type { Order, Expense } from '../../types';
 
 type Nav = NativeStackNavigationProp<ReportsStackParams, 'ReportsMain'>;
@@ -18,6 +19,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 
 export default function ReportsScreen() {
   const nav = useNavigation<Nav>();
+  const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,12 +37,14 @@ export default function ReportsScreen() {
 
   if (loading) return <LoadingScreen />;
 
-  // Month totals
+  // Month totals — use order `total` (what was charged), not amountPaid
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
-  const monthOrders = orders.filter((o) => new Date(o.createdAt) >= monthStart && o.amountPaid > 0);
-  const monthRevenue = monthOrders.reduce((s, o) => s + o.amountPaid, 0);
+  const monthOrders = orders.filter(
+    (o) => new Date(o.createdAt) >= monthStart && o.status !== 'cancelled'
+  );
+  const monthRevenue = monthOrders.reduce((s, o) => s + o.total, 0);
   const monthExpenses = expenses
     .filter((e) => new Date(e.date) >= monthStart)
     .reduce((s, e) => s + e.amount, 0);
@@ -56,9 +60,9 @@ export default function ReportsScreen() {
     const dayRev = orders
       .filter((o) => {
         const dt = new Date(o.createdAt);
-        return dt >= d && dt < nd && o.amountPaid > 0;
+        return dt >= d && dt < nd && o.status !== 'cancelled';
       })
-      .reduce((s, o) => s + o.amountPaid, 0);
+      .reduce((s, o) => s + o.total, 0);
     const dayExp = expenses
       .filter((e) => {
         const dt = new Date(e.date);
@@ -129,11 +133,13 @@ export default function ReportsScreen() {
               ))}
             </View>
 
-            <TouchableOpacity
-              onPress={() => nav.navigate('Settings')}
-              className="h-9 w-9 items-center justify-center rounded-xl bg-slate-100">
-              <Settings size={16} color="#64748B" strokeWidth={1.75} />
-            </TouchableOpacity>
+            {user?.role === 'owner' && (
+              <TouchableOpacity
+                onPress={() => nav.navigate('Settings')}
+                className="h-9 w-9 items-center justify-center rounded-xl bg-slate-100">
+                <Settings size={16} color="#64748B" strokeWidth={1.75} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -280,48 +286,52 @@ export default function ReportsScreen() {
           )}
         </Card>
 
-        {/* Expense Breakdown */}
-        <Card className="p-4">
-          <View className="mb-3 flex-row items-center justify-between">
-            <SectionLabel title="Expenses by Category" />
-            <TouchableOpacity
-              onPress={() => nav.navigate('ExpensesMain')}
-              className="flex-row items-center gap-1">
-              <Text className="text-xs font-semibold text-sky-500">Manage</Text>
-              <ChevronRight size={11} color="#0EA5E9" />
-            </TouchableOpacity>
-          </View>
-          {expBreakdown.length === 0 ? (
-            <Text className="py-4 text-center text-sm text-slate-400">No expenses recorded</Text>
-          ) : (
-            expBreakdown.map((cat, i) => {
-              const pct = monthExpenses > 0 ? (cat.total / monthExpenses) * 100 : 0;
-              return (
-                <View key={cat.id} className={`${i < expBreakdown.length - 1 ? 'mb-4' : ''}`}>
-                  <View className="mb-1.5 flex-row items-center justify-between">
-                    <View className="mr-2 flex-1 flex-row items-center gap-2">
-                      <View
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: cat.color }}
-                      />
-                      <Text className="text-sm font-semibold text-slate-800">{cat.label}</Text>
+        {/* Expense Breakdown — Owner only */}
+        {user?.role === 'owner' && (
+          <Card className="p-4">
+            <View className="mb-3 flex-row items-center justify-between">
+              <SectionLabel title="Expenses by Category" />
+              <TouchableOpacity
+                onPress={() => nav.navigate('ExpensesMain')}
+                className="flex-row items-center gap-1">
+                <Text className="text-xs font-semibold text-sky-500">Manage</Text>
+                <ChevronRight size={11} color="#0EA5E9" />
+              </TouchableOpacity>
+            </View>
+            {expBreakdown.length === 0 ? (
+              <Text className="py-4 text-center text-sm text-slate-400">No expenses recorded</Text>
+            ) : (
+              expBreakdown.map((cat, i) => {
+                const pct = monthExpenses > 0 ? (cat.total / monthExpenses) * 100 : 0;
+                return (
+                  <View key={cat.id} className={`${i < expBreakdown.length - 1 ? 'mb-4' : ''}`}>
+                    <View className="mb-1.5 flex-row items-center justify-between">
+                      <View className="mr-2 flex-1 flex-row items-center gap-2">
+                        <View
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: cat.color }}
+                        />
+                        <Text className="text-sm font-semibold text-slate-800">{cat.label}</Text>
+                      </View>
+                      <Text className="text-xs font-bold text-red-600">
+                        {formatPeso(cat.total)}
+                      </Text>
                     </View>
-                    <Text className="text-xs font-bold text-red-600">{formatPeso(cat.total)}</Text>
+                    <View className="mb-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <View
+                        className="h-full rounded-full"
+                        style={{ width: `${pct}%`, backgroundColor: cat.color }}
+                      />
+                    </View>
+                    <Text className="text-xs text-slate-400">
+                      {pct.toFixed(1)}% · {cat.count} entries
+                    </Text>
                   </View>
-                  <View className="mb-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                    <View
-                      className="h-full rounded-full"
-                      style={{ width: `${pct}%`, backgroundColor: cat.color }}
-                    />
-                  </View>
-                  <Text className="text-xs text-slate-400">
-                    {pct.toFixed(1)}% · {cat.count} entries
-                  </Text>
-                </View>
-              );
-            })
-          )}
-        </Card>
+                );
+              })
+            )}
+          </Card>
+        )}
       </ScrollView>
     </View>
   );

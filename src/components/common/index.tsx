@@ -10,6 +10,7 @@ import {
   TextInput,
   type TextInputProps,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { OrderStatus } from '../../types';
 import { ORDER_STATUS_CONFIG } from '../../constants';
 import { getAvatarColor, getInitials } from '../../utils';
@@ -323,5 +324,33 @@ export function ToggleSwitch({ value, onChange }: ToggleSwitchProps) {
         }}
       />
     </TouchableOpacity>
+  );
+}
+
+// ─── ModalSheet ───────────────────────────────────────────────────────────────
+// Wraps modal content with correct top safe-area padding (notch / status bar).
+// Use this as the root View inside every <Modal> instead of a plain <View>.
+//
+// Usage:
+//   <Modal visible={...} animationType="slide" presentationStyle="pageSheet">
+//     <ModalSheet>
+//       ... your modal content ...
+//     </ModalSheet>
+//   </Modal>
+
+interface ModalSheetProps {
+  children: React.ReactNode;
+  className?: string;
+  style?: object;
+}
+
+export function ModalSheet({ children, className = '', style }: ModalSheetProps) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      className={`flex-1 bg-white ${className}`}
+      style={[{ paddingTop: insets.top > 0 ? insets.top : 16 }, style]}>
+      {children}
+    </View>
   );
 }
