@@ -42,12 +42,13 @@ export interface Service {
   id: string;
   name: string;
   category: ServiceCategory;
-  unit: string; // 'kg' | 'pc' | 'pair'
+  unit: string;
   price: number;
-  duration: string; // e.g. "2-3 days"
+  duration: string;
   description: string;
   isActive: boolean;
   createdAt: string;
+  kgsPerLoad?: number; // only relevant when unit === 'load', default 6
 }
 
 export interface Addon {

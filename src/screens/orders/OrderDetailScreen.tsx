@@ -1,6 +1,17 @@
 // src/screens/orders/OrderDetailScreen.tsx
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, StatusBar } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  StatusBar,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -22,9 +33,16 @@ import {
   Banknote,
 } from 'lucide-react-native';
 
-import { dbGetOrderById, dbUpdateOrderStatus } from '../../db';
+import { dbGetOrderById, dbUpdateOrderStatus, dbSettleBalance } from '../../db';
 import { formatPeso, formatDateTime, formatDate } from '../../utils';
-import { StatusBadge, Card, Avatar, SectionLabel, Divider } from '../../components/common';
+import {
+  StatusBadge,
+  Card,
+  Avatar,
+  SectionLabel,
+  Divider,
+  ModalSheet,
+} from '../../components/common';
 import { ORDER_STATUS_FLOW, DELIVERY_STATUS_CONFIG } from '../../constants';
 import type { OrdersStackParams } from '../../navigation/types';
 import type { Order } from '../../types';
@@ -99,6 +117,11 @@ export default function OrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
+  // Balance collection modal
+  const [showBalanceModal, setShowBalanceModal] = useState(false);
+  const [balanceReceived, setBalanceReceived] = useState('');
+  const [balanceError, setBalanceError] = useState('');
+
   useFocusEffect(
     useCallback(() => {
       dbGetOrderById(orderId).then((o) => {
@@ -110,6 +133,18 @@ export default function OrderDetailScreen() {
 
   const handleStatusUpdate = async (nextStatus: Order['status']) => {
     if (!order) return;
+
+    // Intercept complete — require full balance first
+    if (nextStatus === 'completed') {
+      const balance = order.total - order.amountPaid;
+      if (balance > 0) {
+        setBalanceReceived(String(balance)); // pre-fill with exact balance
+        setBalanceError('');
+        setShowBalanceModal(true);
+        return;
+      }
+    }
+
     const label =
       nextStatus === 'completed'
         ? 'Mark as Claimed'
@@ -128,6 +163,26 @@ export default function OrderDetailScreen() {
         },
       },
     ]);
+  };
+
+  const handleConfirmBalance = async () => {
+    if (!order) return;
+    const balance = order.total - order.amountPaid;
+    const received = parseFloat(balanceReceived) || 0;
+
+    if (received < balance) {
+      setBalanceError(`Minimum required: ${formatPeso(balance)}`);
+      return;
+    }
+
+    setUpdating(true);
+    setShowBalanceModal(false);
+
+    // Settle balance then mark completed
+    await dbSettleBalance(order.id, received);
+    const updated = await dbUpdateOrderStatus(order.id, 'completed');
+    if (updated) setOrder(updated);
+    setUpdating(false);
   };
 
   const handleCancel = () => {
@@ -412,6 +467,125 @@ export default function OrderDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* ── Collect Balance Modal ──────────────────────────────────────────── */}
+      <Modal
+        visible={showBalanceModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowBalanceModal(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          className="flex-1">
+          <ModalSheet>
+            {/* Header */}
+            <View className="flex-row items-center justify-between border-b border-slate-100 px-4 pb-3">
+              <View>
+                <Text className="text-lg font-bold text-slate-900">Collect Balance</Text>
+                <Text className="mt-0.5 text-xs text-slate-400">
+                  Required before marking as claimed
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowBalanceModal(false)}
+                className="h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
+                <X size={14} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View className="gap-4 p-4">
+              {/* Balance summary */}
+              <View className="gap-2 rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                <View className="flex-row justify-between">
+                  <Text className="text-sm text-slate-600">Order Total</Text>
+                  <Text className="text-sm font-bold text-slate-900">
+                    {formatPeso(order?.total ?? 0)}
+                  </Text>
+                </View>
+                <View className="flex-row justify-between">
+                  <Text className="text-sm text-slate-600">Already Paid</Text>
+                  <Text className="text-sm font-semibold text-emerald-600">
+                    {formatPeso(order?.amountPaid ?? 0)}
+                  </Text>
+                </View>
+                <View className="flex-row justify-between border-t border-amber-200 pt-2">
+                  <Text className="text-sm font-bold text-amber-700">Balance Due</Text>
+                  <Text className="text-lg font-bold text-amber-600">
+                    {formatPeso((order?.total ?? 0) - (order?.amountPaid ?? 0))}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Amount received input */}
+              <View>
+                <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Amount Received (₱)
+                </Text>
+                <TextInput
+                  value={balanceReceived}
+                  onChangeText={(v) => {
+                    setBalanceReceived(v);
+                    setBalanceError('');
+                  }}
+                  keyboardType="numeric"
+                  placeholder="0.00"
+                  placeholderTextColor="#94A3B8"
+                  autoFocus
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-center text-2xl font-bold text-slate-900"
+                />
+              </View>
+
+              {/* Change — if overpaid */}
+              {parseFloat(balanceReceived) > (order?.total ?? 0) - (order?.amountPaid ?? 0) && (
+                <View className="flex-row items-center justify-between rounded-xl bg-emerald-50 px-4 py-3">
+                  <Text className="text-sm font-bold text-emerald-700">Change</Text>
+                  <Text className="text-base font-bold text-emerald-600">
+                    {formatPeso(
+                      parseFloat(balanceReceived) - ((order?.total ?? 0) - (order?.amountPaid ?? 0))
+                    )}
+                  </Text>
+                </View>
+              )}
+
+              {/* Error */}
+              {balanceError ? (
+                <Text className="text-center text-xs font-semibold text-red-500">
+                  {balanceError}
+                </Text>
+              ) : null}
+            </View>
+
+            {/* Footer */}
+            <View className="mt-auto flex-row gap-3 border-t border-slate-100 px-4 pb-10 pt-3">
+              <TouchableOpacity
+                onPress={() => setShowBalanceModal(false)}
+                className="flex-1 items-center rounded-2xl bg-slate-100 py-4">
+                <Text className="text-sm font-semibold text-slate-700">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleConfirmBalance}
+                disabled={!balanceReceived || parseFloat(balanceReceived) <= 0 || updating}
+                activeOpacity={0.85}
+                className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 ${
+                  balanceReceived && parseFloat(balanceReceived) > 0
+                    ? 'bg-emerald-500'
+                    : 'bg-slate-200'
+                }`}
+                style={{ flex: 2 }}>
+                <Package
+                  size={15}
+                  color={balanceReceived && parseFloat(balanceReceived) > 0 ? '#fff' : '#94A3B8'}
+                  strokeWidth={2}
+                />
+                <Text
+                  className={`text-sm font-bold ${balanceReceived && parseFloat(balanceReceived) > 0 ? 'text-white' : 'text-slate-400'}`}>
+                  Collect &amp; Complete
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ModalSheet>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }

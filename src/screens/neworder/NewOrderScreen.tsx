@@ -77,6 +77,7 @@ function StepBar({ current }: { current: number }) {
 // ─── Service Tile ─────────────────────────────────────────────────────────────
 
 function ServiceTile({ svc, qty, onAdd }: { svc: Service; qty: number; onAdd: () => void }) {
+  const isLoad = svc.unit === 'load';
   return (
     <TouchableOpacity
       onPress={onAdd}
@@ -105,6 +106,9 @@ function ServiceTile({ svc, qty, onAdd }: { svc: Service; qty: number; onAdd: ()
         ₱{svc.price}
         <Text className="text-xs font-medium text-slate-400">/{svc.unit}</Text>
       </Text>
+      {isLoad && (
+        <Text className="mt-0.5 text-xs text-slate-400">1 load = {svc.kgsPerLoad ?? 6}kg</Text>
+      )}
     </TouchableOpacity>
   );
 }
@@ -144,6 +148,12 @@ export default function NewOrderScreen() {
   // Modals
   const [qtyModal, setQtyModal] = useState<Service | null>(null);
   const [qtyInput, setQtyInput] = useState('1');
+  const [kgInput, setKgInput] = useState(''); // for load-based entry
+
+  // Custom add-on (inline, inside addon modal)
+  const [customAddonName, setCustomAddonName] = useState('');
+  const [customAddonPrice, setCustomAddonPrice] = useState('');
+  const [showCustomAddon, setShowCustomAddon] = useState(false);
   const [custModal, setCustModal] = useState(false);
   const [custSearch, setCustSearch] = useState('');
   const [addonModal, setAddonModal] = useState<number | null>(null); // cart index
@@ -194,6 +204,35 @@ export default function NewOrderScreen() {
     });
   };
 
+  // Load-based: qty = number of loads, unit label shows actual kg
+  const addToCartLoad = (svc: Service, loads: number, actualKg: number) => {
+    setCart((prev) => {
+      const exists = prev.findIndex((i) => i.serviceId === svc.id);
+      const unitLabel = `load (${actualKg}kg)`;
+      if (exists >= 0) {
+        const cur = prev[exists];
+        const newLoads = cur.qty + loads;
+        return prev.map((i, idx) =>
+          idx === exists
+            ? { ...i, qty: newLoads, unit: unitLabel, subtotal: newLoads * i.pricePerUnit }
+            : i
+        );
+      }
+      return [
+        ...prev,
+        {
+          serviceId: svc.id,
+          serviceName: svc.name,
+          qty: loads,
+          unit: unitLabel,
+          pricePerUnit: svc.price,
+          subtotal: loads * svc.price,
+          addons: [],
+        },
+      ];
+    });
+  };
+
   const updateCartQty = (idx: number, newQty: number) => {
     if (newQty <= 0) {
       setCart((p) => p.filter((_, i) => i !== idx));
@@ -216,6 +255,21 @@ export default function NewOrderScreen() {
           addons: has
             ? item.addons.filter((a) => a.addonId !== addon.id)
             : [...item.addons, { addonId: addon.id, addonName: addon.name, price: addon.price }],
+        };
+      })
+    );
+  };
+
+  const addCustomAddon = (cartIdx: number, name: string, price: number) => {
+    const customId = `custom-${generateId('adn')}`;
+    setCart((p) =>
+      p.map((item, i) => {
+        if (i !== cartIdx) return item;
+        // Remove existing custom with same name if re-added
+        const filtered = item.addons.filter((a) => a.addonName !== name);
+        return {
+          ...item,
+          addons: [...filtered, { addonId: customId, addonName: name, price }],
         };
       })
     );
@@ -458,6 +512,7 @@ export default function NewOrderScreen() {
                         qty={inCart?.qty ?? 0}
                         onAdd={() => {
                           setQtyInput('1');
+                          setKgInput('');
                           setQtyModal(svc);
                         }}
                       />
@@ -1047,7 +1102,7 @@ export default function NewOrderScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ── Qty Modal ───────────────────────────────────────────────────── */}
+      {/* ── Qty / Load Modal ────────────────────────────────────────────── */}
       <Modal
         visible={!!qtyModal}
         animationType="fade"
@@ -1057,48 +1112,148 @@ export default function NewOrderScreen() {
           className="flex-1 justify-end bg-black/40"
           activeOpacity={1}
           onPress={() => setQtyModal(null)}>
-          <View className="rounded-t-3xl bg-white p-6">
-            <Text className="mb-1 text-center text-lg font-bold text-slate-900">
-              {qtyModal?.name}
-            </Text>
-            <Text className="mb-5 text-center text-sm text-slate-400">
-              Enter quantity in {qtyModal?.unit}
-            </Text>
-            <TextInput
-              value={qtyInput}
-              onChangeText={setQtyInput}
-              keyboardType="numeric"
-              className="mb-4 border-b-2 border-sky-400 pb-2 text-center text-5xl font-bold text-sky-500"
-              style={{ fontFamily: undefined }}
-              autoFocus
-            />
-            <Text className="mb-6 text-center text-sm text-slate-500">
-              Subtotal:{' '}
-              <Text className="font-bold text-sky-500">
-                {formatPeso((parseFloat(qtyInput) || 0) * (qtyModal?.price ?? 0))}
-              </Text>
-            </Text>
-            <View className="flex-row gap-3">
-              <TouchableOpacity
-                onPress={() => setQtyModal(null)}
-                activeOpacity={0.8}
-                className="flex-1 items-center rounded-2xl bg-slate-100 py-4">
-                <Text className="text-sm font-semibold text-slate-700">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  if (qtyModal) {
-                    addToCart(qtyModal, parseFloat(qtyInput) || 1);
-                    setQtyModal(null);
-                  }
-                }}
-                activeOpacity={0.8}
-                className="flex-2 flex-row items-center justify-center gap-2 rounded-2xl bg-sky-500 py-4"
-                style={{ flex: 2 }}>
-                <Check size={16} color="#fff" strokeWidth={2.5} />
-                <Text className="text-sm font-bold text-white">Add to Cart</Text>
-              </TouchableOpacity>
-            </View>
+          <View className="rounded-t-3xl bg-white p-6" onStartShouldSetResponder={() => true}>
+            {qtyModal?.unit === 'load' ? (
+              // ── Load-based entry ──────────────────────────────────────
+              (() => {
+                const kgsPerLoad = qtyModal.kgsPerLoad ?? 6;
+                const kg = parseFloat(kgInput) || 0;
+                const loads = Math.floor(kg / kgsPerLoad);
+                const remainderKg = parseFloat((kg % kgsPerLoad).toFixed(2));
+                const subtotal = loads * qtyModal.price;
+                const isValid = kg > 0;
+
+                return (
+                  <>
+                    <Text className="mb-0.5 text-center text-lg font-bold text-slate-900">
+                      {qtyModal.name}
+                    </Text>
+                    <Text className="mb-4 text-center text-xs text-slate-400">
+                      1 load = {kgsPerLoad} kg · ₱{qtyModal.price}/load
+                    </Text>
+
+                    {/* Kg input */}
+                    <View className="mb-3 items-center">
+                      <View className="flex-row items-end justify-center gap-2">
+                        <TextInput
+                          value={kgInput}
+                          onChangeText={setKgInput}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor="#CBD5E1"
+                          className="min-w-24 border-b-2 border-sky-400 pb-1 text-center text-5xl font-bold text-sky-500"
+                          style={{ fontFamily: undefined }}
+                          autoFocus
+                        />
+                        <Text className="mb-2 text-xl font-bold text-slate-400">kg</Text>
+                      </View>
+                    </View>
+
+                    {/* Load breakdown */}
+                    {kg > 0 && (
+                      <View className="mb-4 gap-2 rounded-2xl bg-sky-50 p-4">
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-sm text-slate-600">Loads charged</Text>
+                          <Text className="text-sm font-bold text-slate-900">
+                            {loads} load{loads !== 1 ? 's' : ''} × {formatPeso(qtyModal.price)}
+                          </Text>
+                        </View>
+                        {remainderKg > 0 && (
+                          <View className="flex-row items-center justify-between">
+                            <Text className="text-sm text-amber-600">Remainder</Text>
+                            <Text className="text-sm font-bold text-amber-600">
+                              {remainderKg} kg — add via Add-ons
+                            </Text>
+                          </View>
+                        )}
+                        <View className="flex-row items-center justify-between border-t border-sky-200 pt-2">
+                          <Text className="text-sm font-bold text-slate-700">Subtotal</Text>
+                          <Text className="text-base font-bold text-sky-600">
+                            {formatPeso(subtotal)}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    <View className="flex-row gap-3">
+                      <TouchableOpacity
+                        onPress={() => setQtyModal(null)}
+                        activeOpacity={0.8}
+                        className="flex-1 items-center rounded-2xl bg-slate-100 py-4">
+                        <Text className="text-sm font-semibold text-slate-700">Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (qtyModal && loads > 0) {
+                            // Add to cart with loads as qty, store actual kg in unit label
+                            addToCartLoad(qtyModal, loads, kg);
+                            setQtyModal(null);
+                          }
+                        }}
+                        disabled={!isValid || loads === 0}
+                        activeOpacity={0.8}
+                        className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 ${isValid && loads > 0 ? 'bg-sky-500' : 'bg-slate-200'}`}
+                        style={{ flex: 2 }}>
+                        <Check
+                          size={16}
+                          color={isValid && loads > 0 ? '#fff' : '#94A3B8'}
+                          strokeWidth={2.5}
+                        />
+                        <Text
+                          className={`text-sm font-bold ${isValid && loads > 0 ? 'text-white' : 'text-slate-400'}`}>
+                          Add {loads > 0 ? `${loads} Load${loads !== 1 ? 's' : ''}` : 'to Cart'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                );
+              })()
+            ) : (
+              // ── Regular qty entry ─────────────────────────────────────
+              <>
+                <Text className="mb-1 text-center text-lg font-bold text-slate-900">
+                  {qtyModal?.name}
+                </Text>
+                <Text className="mb-5 text-center text-sm text-slate-400">
+                  Enter quantity in {qtyModal?.unit}
+                </Text>
+                <TextInput
+                  value={qtyInput}
+                  onChangeText={setQtyInput}
+                  keyboardType="numeric"
+                  className="mb-4 border-b-2 border-sky-400 pb-2 text-center text-5xl font-bold text-sky-500"
+                  style={{ fontFamily: undefined }}
+                  autoFocus
+                />
+                <Text className="mb-6 text-center text-sm text-slate-500">
+                  Subtotal:{' '}
+                  <Text className="font-bold text-sky-500">
+                    {formatPeso((parseFloat(qtyInput) || 0) * (qtyModal?.price ?? 0))}
+                  </Text>
+                </Text>
+                <View className="flex-row gap-3">
+                  <TouchableOpacity
+                    onPress={() => setQtyModal(null)}
+                    activeOpacity={0.8}
+                    className="flex-1 items-center rounded-2xl bg-slate-100 py-4">
+                    <Text className="text-sm font-semibold text-slate-700">Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (qtyModal) {
+                        addToCart(qtyModal, parseFloat(qtyInput) || 1);
+                        setQtyModal(null);
+                      }
+                    }}
+                    activeOpacity={0.8}
+                    className="flex-row items-center justify-center gap-2 rounded-2xl bg-sky-500 py-4"
+                    style={{ flex: 2 }}>
+                    <Check size={16} color="#fff" strokeWidth={2.5} />
+                    <Text className="text-sm font-bold text-white">Add to Cart</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -1108,8 +1263,14 @@ export default function NewOrderScreen() {
         visible={addonModal !== null}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setAddonModal(null)}>
+        onRequestClose={() => {
+          setAddonModal(null);
+          setShowCustomAddon(false);
+          setCustomAddonName('');
+          setCustomAddonPrice('');
+        }}>
         <ModalSheet>
+          {/* Header */}
           <View className="flex-row items-center justify-between border-b border-slate-100 px-4 pb-3">
             <View>
               <Text className="text-lg font-bold text-slate-900">Add-ons</Text>
@@ -1118,15 +1279,22 @@ export default function NewOrderScreen() {
               )}
             </View>
             <TouchableOpacity
-              onPress={() => setAddonModal(null)}
+              onPress={() => {
+                setAddonModal(null);
+                setShowCustomAddon(false);
+                setCustomAddonName('');
+                setCustomAddonPrice('');
+              }}
               className="h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
               <X size={15} color="#64748B" />
             </TouchableOpacity>
           </View>
+
           <FlatList
             data={addons}
             keyExtractor={(a) => a.id}
             contentContainerClassName="p-4 gap-3"
+            showsVerticalScrollIndicator={false}
             renderItem={({ item: addon }) => {
               const selected =
                 addonModal !== null &&
@@ -1156,6 +1324,154 @@ export default function NewOrderScreen() {
                 </TouchableOpacity>
               );
             }}
+            ListFooterComponent={
+              <View className="mt-2">
+                {/* Divider + label */}
+                <View className="mb-3 flex-row items-center gap-3">
+                  <View className="h-px flex-1 bg-slate-200" />
+                  <Text className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Custom
+                  </Text>
+                  <View className="h-px flex-1 bg-slate-200" />
+                </View>
+
+                {!showCustomAddon ? (
+                  // ── Tap to expand ──────────────────────────────────────
+                  <TouchableOpacity
+                    onPress={() => setShowCustomAddon(true)}
+                    activeOpacity={0.75}
+                    className="flex-row items-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3.5">
+                    <View className="h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white">
+                      <Plus size={16} color="#94A3B8" strokeWidth={2} />
+                    </View>
+                    <Text className="text-sm font-semibold text-slate-400">Add custom add-on…</Text>
+                  </TouchableOpacity>
+                ) : (
+                  // ── Custom addon form ──────────────────────────────────
+                  <View className="gap-3 rounded-2xl border border-violet-100 bg-violet-50 p-4">
+                    <Text className="text-xs font-bold uppercase tracking-wider text-violet-700">
+                      Custom Add-on
+                    </Text>
+
+                    {/* Name */}
+                    <View>
+                      <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                        Name *
+                      </Text>
+                      <TextInput
+                        value={customAddonName}
+                        onChangeText={setCustomAddonName}
+                        placeholder="e.g. Extra kg, Special treatment"
+                        placeholderTextColor="#94A3B8"
+                        className="rounded-xl border border-violet-200 bg-white px-3 py-3 text-sm text-slate-800"
+                        autoFocus
+                      />
+                    </View>
+
+                    {/* Price */}
+                    <View>
+                      <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                        Price (₱) *
+                      </Text>
+                      <TextInput
+                        value={customAddonPrice}
+                        onChangeText={setCustomAddonPrice}
+                        keyboardType="numeric"
+                        placeholder="0.00"
+                        placeholderTextColor="#94A3B8"
+                        className="rounded-xl border border-violet-200 bg-white px-3 py-3 text-sm text-slate-800"
+                      />
+                    </View>
+
+                    {/* Actions */}
+                    <View className="flex-row gap-2">
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowCustomAddon(false);
+                          setCustomAddonName('');
+                          setCustomAddonPrice('');
+                        }}
+                        className="flex-1 items-center rounded-xl border border-slate-200 bg-white py-3">
+                        <Text className="text-xs font-semibold text-slate-500">Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const name = customAddonName.trim();
+                          const price = parseFloat(customAddonPrice);
+                          if (!name || !price || price <= 0) return;
+                          if (addonModal !== null) {
+                            addCustomAddon(addonModal, name, price);
+                          }
+                          setShowCustomAddon(false);
+                          setCustomAddonName('');
+                          setCustomAddonPrice('');
+                        }}
+                        disabled={!customAddonName.trim() || !(parseFloat(customAddonPrice) > 0)}
+                        activeOpacity={0.85}
+                        className={`flex-row items-center justify-center gap-1.5 rounded-xl py-3 ${
+                          customAddonName.trim() && parseFloat(customAddonPrice) > 0
+                            ? 'bg-violet-500'
+                            : 'bg-slate-200'
+                        }`}
+                        style={{ flex: 2 }}>
+                        <Check
+                          size={13}
+                          color={
+                            customAddonName.trim() && parseFloat(customAddonPrice) > 0
+                              ? '#fff'
+                              : '#94A3B8'
+                          }
+                          strokeWidth={2.5}
+                        />
+                        <Text
+                          className={`text-xs font-bold ${customAddonName.trim() && parseFloat(customAddonPrice) > 0 ? 'text-white' : 'text-slate-400'}`}>
+                          Add
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
+                {/* Show already added custom addons for this cart item */}
+                {addonModal !== null &&
+                  cart[addonModal]?.addons
+                    .filter((a) => a.addonId.startsWith('custom-'))
+                    .map((a) => (
+                      <View
+                        key={a.addonId}
+                        className="mt-2 flex-row items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-3.5">
+                        <View className="h-9 w-9 items-center justify-center rounded-xl bg-violet-100">
+                          <Sparkles size={16} color="#7C3AED" strokeWidth={1.75} />
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-sm font-semibold text-violet-900">
+                            {a.addonName}
+                          </Text>
+                          <Text className="text-xs text-violet-400">Custom</Text>
+                        </View>
+                        <Text className="mr-2 text-sm font-bold text-violet-600">
+                          +{formatPeso(a.price)}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() =>
+                            setCart((p) =>
+                              p.map((item, i) =>
+                                i === addonModal
+                                  ? {
+                                      ...item,
+                                      addons: item.addons.filter((ad) => ad.addonId !== a.addonId),
+                                    }
+                                  : item
+                              )
+                            )
+                          }
+                          className="h-6 w-6 items-center justify-center rounded-full bg-red-100">
+                          <X size={11} color="#EF4444" strokeWidth={2.5} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+              </View>
+            }
           />
         </ModalSheet>
       </Modal>

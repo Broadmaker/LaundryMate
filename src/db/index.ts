@@ -33,6 +33,7 @@ const CREATE_TABLES_SQL = `
     duration     TEXT NOT NULL DEFAULT '',
     description  TEXT NOT NULL DEFAULT '',
     is_active    INTEGER NOT NULL DEFAULT 1,
+    kgs_per_load REAL NOT NULL DEFAULT 6,
     created_at   TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS ${TABLES.addons} (
@@ -131,6 +132,16 @@ const CREATE_TABLES_SQL = `
 export async function initDatabase(): Promise<void> {
   const db = await getDb();
   await db.execAsync(CREATE_TABLES_SQL);
+
+  // ─── Migrations (safe to run on every launch) ─────────────────────────────
+  // Add kgs_per_load to existing services table if missing
+  try {
+    await db.execAsync(`ALTER TABLE ${TABLES.services} ADD COLUMN kgs_per_load REAL NOT NULL DEFAULT 6`);
+    console.log('[DB] Migration: added kgs_per_load column ✓');
+  } catch {
+    // Column already exists — ignore
+  }
+
   console.log('[DB] Initialized ✓');
 }
 
@@ -142,6 +153,7 @@ function mapService(row: any): Service {
     unit: row.unit, price: row.price, duration: row.duration,
     description: row.description, isActive: row.is_active === 1,
     createdAt: row.created_at,
+    kgsPerLoad: row.kgs_per_load ?? 6,
   };
 }
 
@@ -225,27 +237,29 @@ export async function dbInsertService(s: Omit<Service, 'createdAt'>): Promise<Se
   const now = new Date().toISOString();
   await db.runAsync(
     `INSERT INTO ${TABLES.services}
-     (id, name, category, unit, price, duration, description, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [s.id, s.name, s.category, s.unit, s.price, s.duration ?? '', s.description ?? '', s.isActive ? 1 : 0, now]
+     (id, name, category, unit, price, duration, description, is_active, kgs_per_load, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [s.id, s.name, s.category, s.unit, s.price, s.duration ?? '', s.description ?? '',
+     s.isActive ? 1 : 0, s.kgsPerLoad ?? 6, now]
   );
   return (await dbGetServiceById(s.id))!;
 }
 
 export async function dbUpdateService(
   id: string,
-  updates: Partial<Pick<Service, 'name' | 'category' | 'unit' | 'price' | 'duration' | 'description' | 'isActive'>>
+  updates: Partial<Pick<Service, 'name' | 'category' | 'unit' | 'price' | 'duration' | 'description' | 'isActive' | 'kgsPerLoad'>>
 ): Promise<Service | null> {
   const db = await getDb();
   const fields: string[] = [];
   const values: any[] = [];
-  if (updates.name        !== undefined) { fields.push('name = ?');        values.push(updates.name); }
-  if (updates.category    !== undefined) { fields.push('category = ?');    values.push(updates.category); }
-  if (updates.unit        !== undefined) { fields.push('unit = ?');        values.push(updates.unit); }
-  if (updates.price       !== undefined) { fields.push('price = ?');       values.push(updates.price); }
-  if (updates.duration    !== undefined) { fields.push('duration = ?');    values.push(updates.duration); }
-  if (updates.description !== undefined) { fields.push('description = ?'); values.push(updates.description); }
-  if (updates.isActive    !== undefined) { fields.push('is_active = ?');   values.push(updates.isActive ? 1 : 0); }
+  if (updates.name        !== undefined) { fields.push('name = ?');         values.push(updates.name); }
+  if (updates.category    !== undefined) { fields.push('category = ?');     values.push(updates.category); }
+  if (updates.unit        !== undefined) { fields.push('unit = ?');         values.push(updates.unit); }
+  if (updates.price       !== undefined) { fields.push('price = ?');        values.push(updates.price); }
+  if (updates.duration    !== undefined) { fields.push('duration = ?');     values.push(updates.duration); }
+  if (updates.description !== undefined) { fields.push('description = ?');  values.push(updates.description); }
+  if (updates.isActive    !== undefined) { fields.push('is_active = ?');    values.push(updates.isActive ? 1 : 0); }
+  if (updates.kgsPerLoad  !== undefined) { fields.push('kgs_per_load = ?'); values.push(updates.kgsPerLoad); }
   if (fields.length === 0) return dbGetServiceById(id);
   values.push(id);
   await db.runAsync(`UPDATE ${TABLES.services} SET ${fields.join(', ')} WHERE id = ?`, values);
@@ -426,6 +440,20 @@ export async function dbUpdateOrderStatus(id: string, status: Order['status']): 
          claimed_at = CASE WHEN ? = 'completed'  THEN ? ELSE claimed_at END
      WHERE id = ?`,
     [status, now, status, now, status, now, id]
+  );
+  return dbGetOrderById(id);
+}
+
+export async function dbSettleBalance(
+  id: string,
+  additionalPayment: number
+): Promise<Order | null> {
+  const db = await getDb();
+  await db.runAsync(
+    `UPDATE ${TABLES.orders}
+     SET amount_paid = amount_paid + ?, updated_at = ?
+     WHERE id = ?`,
+    [additionalPayment, new Date().toISOString(), id]
   );
   return dbGetOrderById(id);
 }

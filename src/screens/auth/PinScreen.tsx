@@ -98,12 +98,21 @@ export default function PinScreen() {
 
       {/* Logo / Shop name */}
       <View className="mb-12 items-center">
-        <Image
-          source={require('../../../assets/laundry_logo.png')}
-          className="mb-4 h-24 w-24"
-          resizeMode="contain"
-        />
-
+        <View
+          className="mb-4 h-20 w-20 overflow-hidden rounded-2xl"
+          style={{
+            shadowColor: '#0EA5E9',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.2,
+            shadowRadius: 12,
+            elevation: 6,
+          }}>
+          <Image
+            source={require('../../../assets/laundry_logo.png')}
+            style={{ width: '100%', height: '100%' }}
+            resizeMode="contain"
+          />
+        </View>
         <Text className="text-2xl font-bold text-slate-900">{shopName}</Text>
         <Text className="mt-1 text-sm text-slate-400">Enter your PIN to continue</Text>
       </View>

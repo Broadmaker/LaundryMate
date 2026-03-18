@@ -96,9 +96,14 @@ function ServiceFormModal({ existing, onSave, onClose }: ServiceFormProps) {
   const [duration, setDuration] = useState(existing?.duration ?? 'Same Day');
   const [description, setDescription] = useState(existing?.description ?? '');
   const [isActive, setIsActive] = useState(existing?.isActive ?? true);
+  const [kgsPerLoad, setKgsPerLoad] = useState(
+    existing?.kgsPerLoad ? String(existing.kgsPerLoad) : '6'
+  );
   const [saving, setSaving] = useState(false);
 
-  const isValid = name.trim().length > 0 && parseFloat(price) > 0;
+  const isLoad = unit === 'load';
+  const isValid =
+    name.trim().length > 0 && parseFloat(price) > 0 && (!isLoad || parseFloat(kgsPerLoad) > 0);
 
   const handleSave = async () => {
     if (!isValid) return;
@@ -112,6 +117,7 @@ function ServiceFormModal({ existing, onSave, onClose }: ServiceFormProps) {
       duration,
       description: description.trim(),
       isActive,
+      kgsPerLoad: isLoad ? parseFloat(kgsPerLoad) || 6 : 6,
     });
     setSaving(false);
     onClose();
@@ -186,6 +192,30 @@ function ServiceFormModal({ existing, onSave, onClose }: ServiceFormProps) {
                 </ScrollView>
               </View>
             </View>
+
+            {/* kgsPerLoad — only shown when unit is load */}
+            {isLoad && (
+              <View className="rounded-xl border border-sky-100 bg-sky-50 p-3">
+                <Text className="mb-1.5 text-xs font-bold uppercase tracking-wider text-sky-700">
+                  Kg per Load *
+                </Text>
+                <View className="flex-row items-center gap-3">
+                  <TextInput
+                    value={kgsPerLoad}
+                    onChangeText={setKgsPerLoad}
+                    keyboardType="numeric"
+                    placeholder="6"
+                    placeholderTextColor="#94A3B8"
+                    className="flex-1 rounded-xl border border-sky-200 bg-white px-3 py-3 text-sm text-slate-800"
+                  />
+                  <View className="flex-1">
+                    <Text className="text-xs leading-4 text-sky-600">
+                      e.g. 6 means 1 load = 6 kg.{'\n'}Staff enters kg, system calculates loads.
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
 
             {/* Category */}
             <View>
