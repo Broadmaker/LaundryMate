@@ -3,6 +3,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Home, PlusCircle, ClipboardList, Users, BarChart2, Lock } from 'lucide-react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { StackActions, getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, UserRole } from '../../auth/AuthContext';
 
@@ -27,15 +28,38 @@ const TAB_LABELS: Record<string, string> = {
 // Staff can see these tabs only
 const STAFF_TABS = new Set(['Dashboard', 'NewOrder', 'Orders', 'Customers', 'Reports']);
 
+// When a focused tab is tapped again, pop its stack to its initial screen
+const INITIAL_SCREENS: Record<string, string> = {
+  Dashboard: 'DashboardHome',
+  Orders: 'OrdersList',
+  NewOrder: 'NewOrderMain',
+  Customers: 'CustomersList',
+  Reports: 'ReportsMain',
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface AppTabBarProps extends BottomTabBarProps {
   userRole?: UserRole;
 }
 
-export default function AppTabBar({ state, navigation, userRole }: AppTabBarProps) {
+function AppTabBar({ state, navigation, userRole }: AppTabBarProps) {
   const { lock } = useAuth();
   const insets = useSafeAreaInsets();
+
+  // Hide tab bar when a pushed screen like Settings is focused (avoids Reports staying highlighted)
+  const focusedRoute: any = state.routes[state.index];
+  const nestedName =
+    getFocusedRouteNameFromRoute(focusedRoute) ?? focusedRoute?.name;
+  if (
+    nestedName === 'Settings' ||
+    nestedName === 'ExpensesMain' ||
+    nestedName === 'DBBrowser' ||
+    // also handle direct nested check as fallback
+    focusedRoute?.state?.routes?.[focusedRoute.state.index]?.name === 'Settings'
+  ) {
+    return null;
+  }
 
   // Bottom padding: safe area inset + extra breathing room
   const bottomPad = insets.bottom + 8;
@@ -69,8 +93,30 @@ export default function AppTabBar({ state, navigation, userRole }: AppTabBarProp
               target: route.key,
               canPreventDefault: true,
             });
-            if (!focused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
+            if (event.defaultPrevented) return;
+            if (focused) {
+              const initial = INITIAL_SCREENS[route.name];
+              if (initial) {
+                // Pop the nested stack to its first screen
+                (navigation.navigate as any)(route.name, { screen: initial });
+              }
+            } else {
+              // Pop the stack of the tab we're leaving so returning later
+              // always lands on its initial screen (e.g. Reports → Settings
+              // should not persist after Home → Reports). Guarded so we
+              // don't dispatch popToTop when already at top (which throws
+              // "POP_TO_TOP was not handled").
+              const prevRoute: any = state.routes[state.index];
+              const prevState: any = prevRoute?.state;
+              const canPop =
+                prevState?.routes?.length > 1 || (prevState?.index ?? 0) > 0;
+              if (prevRoute.key !== route.key && canPop) {
+                navigation.dispatch({
+                  ...StackActions.popToTop(),
+                  target: prevRoute.key,
+                } as any);
+              }
+              navigation.navigate(route.name as never);
             }
           };
 
@@ -129,3 +175,5 @@ export default function AppTabBar({ state, navigation, userRole }: AppTabBarProp
     </View>
   );
 }
+
+export default React.memo(AppTabBar);

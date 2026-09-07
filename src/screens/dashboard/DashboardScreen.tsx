@@ -18,9 +18,11 @@ import {
   Package,
   Users,
   Database,
+  Crown,
+  HardHat,
 } from 'lucide-react-native';
 
-import { dbGetDashboardStats, dbGetOrders, dbGetSettings } from '../../db';
+import { dbGetDashboardStats, dbGetRecentOrders, dbGetSettings } from '../../db';
 import { formatPeso, formatRelativeTime, getGreeting, formatFullDate } from '../../utils';
 import { StatusBadge, Card, Avatar, SectionLabel, LoadingScreen } from '../../components/common';
 import type { DashboardStackParams } from '../../navigation/types';
@@ -31,7 +33,7 @@ type Nav = NativeStackNavigationProp<DashboardStackParams, 'DashboardHome'>;
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
-function StatCard({
+const StatCard = React.memo(function StatCard({
   label,
   value,
   icon: Icon,
@@ -55,11 +57,11 @@ function StatCard({
       <Text className="mt-0.5 text-xs font-semibold text-slate-400">{label}</Text>
     </Card>
   );
-}
+});
 
 // ─── Recent Order Row ─────────────────────────────────────────────────────────
 
-function OrderRow({ order, onPress }: { order: Order; onPress: () => void }) {
+const OrderRow = React.memo(function OrderRow({ order, onPress }: { order: Order; onPress: () => void }) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -87,7 +89,7 @@ function OrderRow({ order, onPress }: { order: Order; onPress: () => void }) {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -105,11 +107,11 @@ export default function DashboardScreen() {
     try {
       const [s, orders, settings] = await Promise.all([
         dbGetDashboardStats(),
-        dbGetOrders(),
+        dbGetRecentOrders(5),
         dbGetSettings(),
       ]);
       setStats(s);
-      setRecentOrders(orders.slice(0, 5));
+      setRecentOrders(orders);
       if (settings.shopName) setShopName(String(settings.shopName));
       if (settings.address) setShopAddress(String(settings.address));
     } finally {
@@ -155,7 +157,11 @@ export default function DashboardScreen() {
             {/* Role badge */}
             <View
               className={`flex-row items-center gap-1.5 rounded-full px-2.5 py-1.5 ${user?.role === 'owner' ? 'bg-sky-50' : 'bg-slate-100'}`}>
-              <Text className="text-sm">{user?.role === 'owner' ? '👑' : '👷'}</Text>
+              {user?.role === 'owner' ? (
+                <Crown size={14} color="#0EA5E9" strokeWidth={1.75} />
+              ) : (
+                <HardHat size={14} color="#64748B" strokeWidth={1.75} />
+              )}
               <Text
                 className={`text-xs font-bold ${user?.role === 'owner' ? 'text-sky-700' : 'text-slate-500'}`}>
                 {user?.role === 'owner' ? 'Owner' : 'Staff'}
@@ -200,7 +206,7 @@ export default function DashboardScreen() {
             <View className="flex-row items-start justify-between">
               <View>
                 <Text className="text-xs font-semibold uppercase tracking-wider text-sky-100">
-                  Today's Revenue
+                  Today&apos;s Revenue
                 </Text>
                 <Text className="mt-1 text-4xl font-bold tracking-tight text-white">
                   {formatPeso(stats?.todayRevenue ?? 0)}

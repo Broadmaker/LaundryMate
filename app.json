@@ -13,7 +13,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#0EA5E9"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": ["assets/*", "assets/**/*"],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.broadmarkee.laundrymate"
@@ -37,11 +37,11 @@
     "updates": {
       "url": "https://u.expo.dev/7f644cb4-a3fb-4808-ba6b-db9e9d439584",
       "enabled": true,
-      "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD"
+      "fallbackToCacheTimeout": 5000,
+      "checkAutomatically": "ON_ERROR_RECOVERY"
     },
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "fingerprint"
     },
     "extra": {
       "eas": {

@@ -353,13 +353,6 @@ export default function DBBrowserScreen() {
   const [selected, setSelected] = useState<TableMeta | null>(null);
   const [wiping, setWiping] = useState(false);
 
-  // Hard guard — owner only
-  React.useEffect(() => {
-    if (user?.role !== 'owner') nav.goBack();
-  }, [user]);
-
-  if (user?.role !== 'owner') return null;
-
   const load = useCallback(async () => {
     setLoading(true);
     const meta = await fetchTableMeta();
@@ -369,15 +362,22 @@ export default function DBBrowserScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      if (user?.role === 'owner') load();
+    }, [load, user])
   );
+
+  // Hard guard — owner only
+  React.useEffect(() => {
+    if (user?.role !== 'owner') nav.goBack();
+  }, [user, nav]);
 
   const totalRows = tables.reduce((s, t) => s + t.rowCount, 0);
 
+  if (user?.role !== 'owner') return null;
+
   const handleWipeAll = () => {
     Alert.alert(
-      '⚠️ Wipe Entire Database',
+      'Wipe Entire Database',
       'This will delete ALL data from every table — orders, customers, services, expenses, everything. Cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },

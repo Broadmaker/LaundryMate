@@ -1,5 +1,5 @@
 // src/screens/orders/OrdersScreen.tsx
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, TextInput, StatusBar } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -22,7 +22,7 @@ const STATUS_TABS: { id: OrderStatus | 'all'; label: string }[] = [
   { id: 'cancelled', label: 'Cancelled' },
 ];
 
-function OrderCard({ order, onPress }: { order: Order; onPress: () => void }) {
+const OrderCard = React.memo(function OrderCard({ order, onPress }: { order: Order; onPress: () => void }) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -76,7 +76,7 @@ function OrderCard({ order, onPress }: { order: Order; onPress: () => void }) {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 export default function OrdersScreen() {
   const nav = useNavigation<Nav>();
@@ -94,16 +94,35 @@ export default function OrdersScreen() {
     }, [])
   );
 
-  const filtered = orders.filter((o) => {
-    const matchTab = activeTab === 'all' || o.status === activeTab;
+  const { filtered, countMap } = useMemo(() => {
     const q = search.toLowerCase();
-    const matchSearch =
-      !q || o.id.toLowerCase().includes(q) || o.customerName.toLowerCase().includes(q);
-    return matchTab && matchSearch;
-  });
+    const f = orders.filter((o) => {
+      const matchTab = activeTab === 'all' || o.status === activeTab;
+      const matchSearch =
+        !q || o.id.toLowerCase().includes(q) || o.customerName.toLowerCase().includes(q);
+      return matchTab && matchSearch;
+    });
+    const map: Record<string, number> = { all: orders.length };
+    for (const t of STATUS_TABS) {
+      if (t.id !== 'all') map[t.id] = 0;
+    }
+    for (const o of orders) {
+      map[o.status] = (map[o.status] ?? 0) + 1;
+    }
+    return { filtered: f, countMap: map };
+  }, [orders, search, activeTab]);
 
-  const countFor = (tab: OrderStatus | 'all') =>
-    tab === 'all' ? orders.length : orders.filter((o) => o.status === tab).length;
+  const countFor = useCallback(
+    (tab: OrderStatus | 'all') => countMap[tab] ?? 0,
+    [countMap]
+  );
+
+  const renderOrderCard = useCallback(
+    ({ item }: { item: Order }) => (
+      <OrderCard order={item} onPress={() => nav.navigate('OrderDetail', { orderId: item.id })} />
+    ),
+    [nav]
+  );
 
   if (loading) return <LoadingScreen />;
 
@@ -180,6 +199,11 @@ export default function OrdersScreen() {
         keyExtractor={(o) => o.id}
         contentContainerClassName="pt-3 pb-6"
         showsVerticalScrollIndicator={false}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews
+        getItemLayout={(_, index) => ({ length: 112, offset: 112 * index, index })}
         ListEmptyComponent={
           <EmptyState
             icon={<ClipboardList size={28} color="#CBD5E1" strokeWidth={1.5} />}
@@ -187,12 +211,7 @@ export default function OrdersScreen() {
             subtitle={search ? 'Try a different search term' : 'Orders will appear here'}
           />
         }
-        renderItem={({ item }) => (
-          <OrderCard
-            order={item}
-            onPress={() => nav.navigate('OrderDetail', { orderId: item.id })}
-          />
-        )}
+        renderItem={renderOrderCard}
       />
     </View>
   );

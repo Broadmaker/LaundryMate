@@ -27,6 +27,7 @@ import {
   Trash2,
   X,
   Check,
+  ChevronLeft,
   ChevronRight,
   ToggleLeft,
   ToggleRight,
@@ -858,7 +859,7 @@ function ServicesTab() {
             <Package size={32} color="#CBD5E1" strokeWidth={1.5} />
             <Text className="mt-3 text-sm font-bold text-slate-500">No services yet</Text>
             <Text className="mt-1 text-center text-xs text-slate-400">
-              Tap "Add" to create your first service
+              Tap &quot;Add&quot; to create your first service
             </Text>
           </View>
         }
@@ -1021,7 +1022,7 @@ function AddonsTab() {
             <Sparkles size={32} color="#CBD5E1" strokeWidth={1.5} />
             <Text className="mt-3 text-sm font-bold text-slate-500">No add-ons yet</Text>
             <Text className="mt-1 text-xs text-slate-400">
-              Tap "Add" to create your first add-on
+              Tap &quot;Add&quot; to create your first add-on
             </Text>
           </View>
         }
@@ -1120,7 +1121,16 @@ export default function SettingsScreen() {
 
       {/* Header */}
       <View className="border-b border-slate-100 bg-white px-4 pb-0 pt-12">
-        <Text className="pb-3 text-xl font-bold text-slate-900">Settings</Text>
+        <View className="flex-row items-center gap-3 pb-3">
+          {nav.canGoBack() && (
+            <TouchableOpacity
+              onPress={() => nav.goBack()}
+              className="h-9 w-9 items-center justify-center rounded-xl bg-slate-100">
+              <ChevronLeft size={18} color="#334155" strokeWidth={2} />
+            </TouchableOpacity>
+          )}
+          <Text className="text-xl font-bold text-slate-900">Settings</Text>
+        </View>
 
         {/* Tab bar */}
         <View className="flex-row">

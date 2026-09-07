@@ -1,7 +1,7 @@
 // src/auth/AuthContext.tsx
 // PIN-based auth with role support and auto-lock after 5 mins inactivity.
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { dbGetSettings, dbSetSetting } from '../db';
 
@@ -152,20 +152,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLocked,
-        ownerPinSet,
-        staffPinSet,
-        unlock,
-        lock,
-        savePin,
-        removePin,
-        resetInactivity,
-      }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      isLocked,
+      ownerPinSet,
+      staffPinSet,
+      unlock,
+      lock,
+      savePin,
+      removePin,
+      resetInactivity,
+    }),
+    [user, isLocked, ownerPinSet, staffPinSet, unlock, lock, savePin, removePin, resetInactivity]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

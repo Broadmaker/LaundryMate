@@ -121,10 +121,15 @@ const CREATE_TABLES_SQL = `
   CREATE INDEX IF NOT EXISTS idx_orders_status     ON ${TABLES.orders}(status);
   CREATE INDEX IF NOT EXISTS idx_orders_created    ON ${TABLES.orders}(created_at);
   CREATE INDEX IF NOT EXISTS idx_orders_customer   ON ${TABLES.orders}(customer_id);
+  CREATE INDEX IF NOT EXISTS idx_orders_status_created ON ${TABLES.orders}(status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_orders_pickup_status ON ${TABLES.orders}(is_pickup, status);
   CREATE INDEX IF NOT EXISTS idx_order_items_order ON ${TABLES.order_items}(order_id);
   CREATE INDEX IF NOT EXISTS idx_order_addons_item ON ${TABLES.order_addons}(order_item_id);
+  CREATE INDEX IF NOT EXISTS idx_order_addons_order ON ${TABLES.order_addons}(order_id);
   CREATE INDEX IF NOT EXISTS idx_expenses_date     ON ${TABLES.expenses}(date);
   CREATE INDEX IF NOT EXISTS idx_customers_phone   ON ${TABLES.customers}(phone);
+  CREATE INDEX IF NOT EXISTS idx_services_active_cat ON ${TABLES.services}(is_active, category);
+  CREATE INDEX IF NOT EXISTS idx_customers_name    ON ${TABLES.customers}(name COLLATE NOCASE);
 `;
 
 // ─── Initialize ───────────────────────────────────────────────────────────────
@@ -182,6 +187,22 @@ function mapExpense(row: any): Expense {
   };
 }
 
+function mapOrderRow(row: any, items: OrderItem[]): Order {
+  return {
+    id: row.id, customerId: row.customer_id, customerName: row.customer_name,
+    customerPhone: row.customer_phone, items,
+    servicesSubtotal: row.services_subtotal, addonsSubtotal: row.addons_subtotal,
+    deliveryFee: row.delivery_fee, discount: row.discount, total: row.total,
+    amountPaid: row.amount_paid, change: row.change_amount,
+    paymentMethod: row.payment_method, status: row.status,
+    isPickup: row.is_pickup === 1, pickupAddress: row.pickup_address,
+    deliveryAddress: row.delivery_address, scheduledAt: row.scheduled_at,
+    driverName: row.driver_name, deliveryStatus: row.delivery_status,
+    notes: row.notes, createdAt: row.created_at, updatedAt: row.updated_at,
+    readyAt: row.ready_at, claimedAt: row.claimed_at,
+  };
+}
+
 async function buildOrder(db: SQLite.SQLiteDatabase, row: any): Promise<Order> {
   const itemRows = await db.getAllAsync<any>(
     `SELECT * FROM ${TABLES.order_items} WHERE order_id = ? ORDER BY rowid`, [row.id]
@@ -201,19 +222,47 @@ async function buildOrder(db: SQLite.SQLiteDatabase, row: any): Promise<Order> {
       };
     })
   );
-  return {
-    id: row.id, customerId: row.customer_id, customerName: row.customer_name,
-    customerPhone: row.customer_phone, items,
-    servicesSubtotal: row.services_subtotal, addonsSubtotal: row.addons_subtotal,
-    deliveryFee: row.delivery_fee, discount: row.discount, total: row.total,
-    amountPaid: row.amount_paid, change: row.change_amount,
-    paymentMethod: row.payment_method, status: row.status,
-    isPickup: row.is_pickup === 1, pickupAddress: row.pickup_address,
-    deliveryAddress: row.delivery_address, scheduledAt: row.scheduled_at,
-    driverName: row.driver_name, deliveryStatus: row.delivery_status,
-    notes: row.notes, createdAt: row.created_at, updatedAt: row.updated_at,
-    readyAt: row.ready_at, claimedAt: row.claimed_at,
-  };
+  return mapOrderRow(row, items);
+}
+
+// Optimized batch builder — single JOIN for many orders (avoids N+1)
+async function buildOrdersBatch(db: SQLite.SQLiteDatabase, orderRows: any[]): Promise<Order[]> {
+  if (orderRows.length === 0) return [];
+  const orderIds = orderRows.map((r) => r.id);
+  const placeholders = orderIds.map(() => '?').join(',');
+  const itemRows = await db.getAllAsync<any>(
+    `SELECT * FROM ${TABLES.order_items} WHERE order_id IN (${placeholders}) ORDER BY order_id, rowid`,
+    orderIds
+  );
+  const addonRows = orderIds.length
+    ? await db.getAllAsync<any>(
+        `SELECT * FROM ${TABLES.order_addons} WHERE order_id IN (${placeholders})`,
+        orderIds
+      )
+    : [];
+  // group addons by order_item_id
+  const addonsByItem = new Map<string, any[]>();
+  for (const ar of addonRows) {
+    const arr = addonsByItem.get(ar.order_item_id) ?? [];
+    arr.push(ar);
+    addonsByItem.set(ar.order_item_id, arr);
+  }
+  // group items by order_id
+  const itemsByOrder = new Map<string, OrderItem[]>();
+  for (const ir of itemRows) {
+    const addons = (addonsByItem.get(ir.id) ?? []).map((ar) => ({
+      addonId: ar.addon_id, addonName: ar.addon_name, price: ar.price,
+    }));
+    const item: OrderItem = {
+      id: ir.id, orderId: ir.order_id, serviceId: ir.service_id,
+      serviceName: ir.service_name, qty: ir.qty, unit: ir.unit,
+      pricePerUnit: ir.price_per_unit, subtotal: ir.subtotal, addons,
+    };
+    const list = itemsByOrder.get(ir.order_id) ?? [];
+    list.push(item);
+    itemsByOrder.set(ir.order_id, list);
+  }
+  return orderRows.map((r) => mapOrderRow(r, itemsByOrder.get(r.id) ?? []));
 }
 
 // ─── Services ─────────────────────────────────────────────────────────────────
@@ -373,7 +422,27 @@ export async function dbUpdateCustomerStats(id: string, amountPaid: number): Pro
 export async function dbGetOrders(): Promise<Order[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<any>(`SELECT * FROM ${TABLES.orders} ORDER BY created_at DESC`);
-  return Promise.all(rows.map((r) => buildOrder(db, r)));
+  return buildOrdersBatch(db, rows);
+}
+
+export async function dbGetRecentOrders(limit = 5): Promise<Order[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(`SELECT * FROM ${TABLES.orders} ORDER BY created_at DESC LIMIT ?`, [limit]);
+  return buildOrdersBatch(db, rows);
+}
+
+export async function dbGetOrdersPaginated(opts: { status?: string; limit?: number; offset?: number } = {}): Promise<Order[]> {
+  const db = await getDb();
+  const conditions: string[] = [];
+  const params: any[] = [];
+  if (opts.status) { conditions.push('status = ?'); params.push(opts.status); }
+  let sql = `SELECT * FROM ${TABLES.orders}`;
+  if (conditions.length) sql += ` WHERE ${conditions.join(' AND ')}`;
+  sql += ` ORDER BY created_at DESC`;
+  if (opts.limit) { sql += ` LIMIT ?`; params.push(opts.limit); }
+  if (opts.offset) { sql += ` OFFSET ?`; params.push(opts.offset); }
+  const rows = await db.getAllAsync<any>(sql, params);
+  return buildOrdersBatch(db, rows);
 }
 
 export async function dbGetOrderById(id: string): Promise<Order | null> {
@@ -387,46 +456,55 @@ export async function dbGetOrdersByCustomer(customerId: string): Promise<Order[]
   const rows = await db.getAllAsync<any>(
     `SELECT * FROM ${TABLES.orders} WHERE customer_id = ? ORDER BY created_at DESC`, [customerId]
   );
-  return Promise.all(rows.map((r) => buildOrder(db, r)));
+  return buildOrdersBatch(db, rows);
 }
 
 export async function dbInsertOrder(order: Order): Promise<Order> {
   const db = await getDb();
-  await db.runAsync(
-    `INSERT INTO ${TABLES.orders}
-     (id, customer_id, customer_name, customer_phone,
-      services_subtotal, addons_subtotal, delivery_fee, discount,
-      total, amount_paid, change_amount, payment_method, status,
-      is_pickup, pickup_address, delivery_address, scheduled_at,
-      driver_name, delivery_status, notes,
-      created_at, updated_at, ready_at, claimed_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [
-      order.id, order.customerId, order.customerName, order.customerPhone,
-      order.servicesSubtotal, order.addonsSubtotal, order.deliveryFee, order.discount,
-      order.total, order.amountPaid, order.change, order.paymentMethod, order.status,
-      order.isPickup ? 1 : 0, order.pickupAddress, order.deliveryAddress, order.scheduledAt,
-      order.driverName, order.deliveryStatus, order.notes,
-      order.createdAt, order.updatedAt, order.readyAt, order.claimedAt,
-    ]
-  );
-  for (const item of order.items) {
+  await db.withTransactionAsync(async () => {
     await db.runAsync(
-      `INSERT INTO ${TABLES.order_items}
-       (id, order_id, service_id, service_name, qty, unit, price_per_unit, subtotal)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [item.id, item.orderId, item.serviceId, item.serviceName, item.qty, item.unit, item.pricePerUnit, item.subtotal]
+      `INSERT INTO ${TABLES.orders}
+       (id, customer_id, customer_name, customer_phone,
+        services_subtotal, addons_subtotal, delivery_fee, discount,
+        total, amount_paid, change_amount, payment_method, status,
+        is_pickup, pickup_address, delivery_address, scheduled_at,
+        driver_name, delivery_status, notes,
+        created_at, updated_at, ready_at, claimed_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        order.id, order.customerId, order.customerName, order.customerPhone,
+        order.servicesSubtotal, order.addonsSubtotal, order.deliveryFee, order.discount,
+        order.total, order.amountPaid, order.change, order.paymentMethod, order.status,
+        order.isPickup ? 1 : 0, order.pickupAddress, order.deliveryAddress, order.scheduledAt,
+        order.driverName, order.deliveryStatus, order.notes,
+        order.createdAt, order.updatedAt, order.readyAt, order.claimedAt,
+      ]
     );
-    for (const addon of item.addons) {
+    for (const item of order.items) {
       await db.runAsync(
-        `INSERT INTO ${TABLES.order_addons} (order_item_id, order_id, addon_id, addon_name, price) VALUES (?, ?, ?, ?, ?)`,
-        [item.id, order.id, addon.addonId, addon.addonName, addon.price]
+        `INSERT INTO ${TABLES.order_items}
+         (id, order_id, service_id, service_name, qty, unit, price_per_unit, subtotal)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [item.id, item.orderId, item.serviceId, item.serviceName, item.qty, item.unit, item.pricePerUnit, item.subtotal]
+      );
+      for (const addon of item.addons) {
+        await db.runAsync(
+          `INSERT INTO ${TABLES.order_addons} (order_item_id, order_id, addon_id, addon_name, price) VALUES (?, ?, ?, ?, ?)`,
+          [item.id, order.id, addon.addonId, addon.addonName, addon.price]
+        );
+      }
+    }
+    if (order.customerId && order.amountPaid > 0) {
+      const loyaltyEarned = Math.floor(order.amountPaid / 100);
+      await db.runAsync(
+        `UPDATE ${TABLES.customers}
+         SET total_orders = total_orders + 1, total_spent = total_spent + ?,
+             loyalty_points = loyalty_points + ?, updated_at = ?
+         WHERE id = ?`,
+        [order.amountPaid, loyaltyEarned, new Date().toISOString(), order.customerId]
       );
     }
-  }
-  if (order.customerId && order.amountPaid > 0) {
-    await dbUpdateCustomerStats(order.customerId, order.amountPaid);
-  }
+  });
   return (await dbGetOrderById(order.id))!;
 }
 
@@ -529,46 +607,31 @@ export async function dbSetSetting(key: keyof ShopSettings, value: any): Promise
 export async function dbGetDashboardStats() {
   const db    = await getDb();
   const today = new Date(); today.setHours(0, 0, 0, 0);
-
-  // Revenue = SUM of order totals (what was charged), excluding cancelled orders.
-  // We use `total` not `amount_paid` — partial payments don't reduce revenue.
-  const todayRow = await db.getFirstAsync<any>(
-    `SELECT COUNT(*) as order_count, COALESCE(SUM(total), 0) as revenue
-     FROM ${TABLES.orders}
-     WHERE created_at >= ? AND status != 'cancelled'`,
-    [today.toISOString()]
-  );
-  const pendingRow = await db.getFirstAsync<any>(
-    `SELECT COUNT(*) as cnt FROM ${TABLES.orders} WHERE status IN ('pending','processing')`
-  );
-  const readyRow = await db.getFirstAsync<any>(
-    `SELECT COUNT(*) as cnt FROM ${TABLES.orders} WHERE status = 'ready'`
-  );
-  const pickupRow = await db.getFirstAsync<any>(
-    `SELECT COUNT(*) as cnt FROM ${TABLES.orders}
-     WHERE is_pickup = 1 AND status IN ('pending','processing','ready')`
-  );
   const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7); weekStart.setHours(0, 0, 0, 0);
-  const weekRow = await db.getFirstAsync<any>(
-    `SELECT COALESCE(SUM(total), 0) as revenue
-     FROM ${TABLES.orders}
-     WHERE created_at >= ? AND status != 'cancelled'`,
-    [weekStart.toISOString()]
-  );
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-  const monthRow = await db.getFirstAsync<any>(
-    `SELECT COALESCE(SUM(total), 0) as revenue
-     FROM ${TABLES.orders}
-     WHERE created_at >= ? AND status != 'cancelled'`,
-    [monthStart.toISOString()]
-  );
-  const customersRow = await db.getFirstAsync<any>(
-    `SELECT COUNT(*) as cnt FROM ${TABLES.customers}`
-  );
-  const expensesRow = await db.getFirstAsync<any>(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM ${TABLES.expenses} WHERE date >= ?`,
-    [monthStart.toISOString()]
-  );
+
+  // Parallelize all 8 reads (was 8 sequential IPC hops)
+  const [todayRow, pendingRow, readyRow, pickupRow, weekRow, monthRow, customersRow, expensesRow] = await Promise.all([
+    db.getFirstAsync<any>(
+      `SELECT COUNT(*) as order_count, COALESCE(SUM(total), 0) as revenue
+       FROM ${TABLES.orders}
+       WHERE created_at >= ? AND status != 'cancelled'`,
+      [today.toISOString()]
+    ),
+    db.getFirstAsync<any>(`SELECT COUNT(*) as cnt FROM ${TABLES.orders} WHERE status IN ('pending','processing')`),
+    db.getFirstAsync<any>(`SELECT COUNT(*) as cnt FROM ${TABLES.orders} WHERE status = 'ready'`),
+    db.getFirstAsync<any>(`SELECT COUNT(*) as cnt FROM ${TABLES.orders} WHERE is_pickup = 1 AND status IN ('pending','processing','ready')`),
+    db.getFirstAsync<any>(
+      `SELECT COALESCE(SUM(total), 0) as revenue FROM ${TABLES.orders} WHERE created_at >= ? AND status != 'cancelled'`,
+      [weekStart.toISOString()]
+    ),
+    db.getFirstAsync<any>(
+      `SELECT COALESCE(SUM(total), 0) as revenue FROM ${TABLES.orders} WHERE created_at >= ? AND status != 'cancelled'`,
+      [monthStart.toISOString()]
+    ),
+    db.getFirstAsync<any>(`SELECT COUNT(*) as cnt FROM ${TABLES.customers}`),
+    db.getFirstAsync<any>(`SELECT COALESCE(SUM(amount), 0) as total FROM ${TABLES.expenses} WHERE date >= ?`, [monthStart.toISOString()]),
+  ]);
 
   const monthRevenue  = monthRow?.revenue ?? 0;
   const totalExpenses = expensesRow?.total ?? 0;

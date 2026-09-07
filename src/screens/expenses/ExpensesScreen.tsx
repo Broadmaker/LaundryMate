@@ -15,14 +15,6 @@ export default function ExpensesScreen() {
   const nav = useNavigation();
   const { user } = useAuth();
 
-  // Hard guard — staff cannot access this screen
-  React.useEffect(() => {
-    if (user?.role !== 'owner') {
-      nav.goBack();
-    }
-  }, [user]);
-
-  if (user?.role !== 'owner') return null;
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -39,12 +31,25 @@ export default function ExpensesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      dbGetExpenses().then((data) => {
-        setExpenses(data);
+      if (user?.role === 'owner') {
+        dbGetExpenses().then((data) => {
+          setExpenses(data);
+          setLoading(false);
+        });
+      } else {
         setLoading(false);
-      });
-    }, [])
+      }
+    }, [user])
   );
+
+  // Hard guard — staff cannot access this screen
+  React.useEffect(() => {
+    if (user?.role !== 'owner') {
+      nav.goBack();
+    }
+  }, [user, nav]);
+
+  if (user?.role !== 'owner') return null;
 
   const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
 

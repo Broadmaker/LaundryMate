@@ -33,6 +33,8 @@ import {
   Sparkles,
   CheckCircle2,
   ShoppingCart,
+  Smartphone,
+  ArrowRight,
 } from 'lucide-react-native';
 
 import { dbGetServices, dbGetAddons, dbGetCustomers, dbInsertOrder } from '../../db';
@@ -470,7 +472,9 @@ export default function NewOrderScreen() {
               shadowRadius: 8,
               elevation: 4,
             }}>
-            <Text className="text-sm font-bold text-white">Go to Settings → Services</Text>
+            <Text className="text-sm font-bold text-white">Go to Settings</Text>
+            <ArrowRight size={14} color="#fff" strokeWidth={2} />
+            <Text className="text-sm font-bold text-white">Services</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -588,11 +592,15 @@ export default function NewOrderScreen() {
                 onPress={() => setStep(1)}
                 disabled={cart.length === 0 || !hasCustomer}
                 activeOpacity={0.8}
-                className={`items-center rounded-xl py-2.5 ${cart.length > 0 && hasCustomer ? 'bg-sky-500' : 'bg-slate-200'}`}>
-                <Text
-                  className={`text-xs font-bold ${cart.length > 0 && hasCustomer ? 'text-white' : 'text-slate-400'}`}>
-                  {!hasCustomer ? 'Enter Customer' : 'Next →'}
-                </Text>
+                className={`flex-row items-center justify-center gap-1 rounded-xl py-2.5 ${cart.length > 0 && hasCustomer ? 'bg-sky-500' : 'bg-slate-200'}`}>
+                {!hasCustomer ? (
+                  <Text className="text-xs font-bold text-slate-400">Enter Customer</Text>
+                ) : (
+                  <>
+                    <Text className="text-xs font-bold text-white">Next</Text>
+                    <ArrowRight size={12} color="#fff" strokeWidth={2.5} />
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -664,7 +672,8 @@ export default function NewOrderScreen() {
               activeOpacity={0.8}
               className="flex-2 flex-row items-center justify-center gap-2 rounded-2xl bg-sky-500 px-8 py-3.5"
               style={{ flex: 2 }}>
-              <Text className="text-sm font-bold text-white">Next: Delivery →</Text>
+              <Text className="text-sm font-bold text-white">Next: Delivery</Text>
+              <ArrowRight size={14} color="#fff" strokeWidth={2} />
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -760,7 +769,8 @@ export default function NewOrderScreen() {
                 activeOpacity={0.8}
                 className="flex-row items-center justify-center gap-2 rounded-2xl bg-sky-500 px-8 py-3.5"
                 style={{ flex: 2 }}>
-                <Text className="text-sm font-bold text-white">Next: Checkout →</Text>
+                <Text className="text-sm font-bold text-white">Next: Checkout</Text>
+                <ArrowRight size={14} color="#fff" strokeWidth={2} />
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -974,7 +984,7 @@ export default function NewOrderScreen() {
               <View className="flex-1 gap-4 p-4">
                 <View className="rounded-xl bg-sky-50 px-4 py-3">
                   <Text className="text-xs font-semibold text-sky-700">
-                    Enter the customer's name and phone number to identify this order. Not saved to
+                    Enter the customer&apos;s name and phone number to identify this order. Not saved to
                     the customers list.
                   </Text>
                 </View>
@@ -1002,7 +1012,7 @@ export default function NewOrderScreen() {
                     Phone Number *
                   </Text>
                   <View className="flex-row items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
-                    <Text className="text-sm text-slate-400">📱</Text>
+                    <Smartphone size={14} color="#94A3B8" strokeWidth={1.75} />
                     <TextInput
                       value={walkinPhone}
                       onChangeText={setWalkinPhone}

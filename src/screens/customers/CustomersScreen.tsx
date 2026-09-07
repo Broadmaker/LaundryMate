@@ -1,5 +1,5 @@
 // src/screens/customers/CustomersScreen.tsx
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -52,14 +52,57 @@ export default function CustomersScreen() {
     }, [])
   );
 
-  const filtered = search
-    ? customers.filter(
-        (c) =>
-          c.name.toLowerCase().includes(search.toLowerCase()) ||
-          c.phone.includes(search) ||
-          (c.email ?? '').toLowerCase().includes(search.toLowerCase())
-      )
-    : customers;
+  const filtered = useMemo(() => {
+    if (!search) return customers;
+    const q = search.toLowerCase();
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.phone.includes(search) ||
+        (c.email ?? '').toLowerCase().includes(q)
+    );
+  }, [customers, search]);
+
+  const renderCustomer = useCallback(
+    ({ item: c }: { item: Customer }) => (
+      <TouchableOpacity
+        onPress={() => nav.navigate('CustomerDetail', { customerId: c.id })}
+        activeOpacity={0.75}
+        className="mb-2.5 flex-row items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3.5"
+        style={{
+          shadowColor: '#0F172A',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.05,
+          shadowRadius: 4,
+          elevation: 1,
+        }}>
+        <Avatar name={c.name} size="lg" />
+        <View className="min-w-0 flex-1">
+          <Text className="text-sm font-bold text-slate-900">{c.name}</Text>
+          <View className="mt-0.5 flex-row items-center gap-1">
+            <Phone size={10} color="#94A3B8" />
+            <Text className="text-xs text-slate-400">{c.phone}</Text>
+          </View>
+          {c.email && (
+            <View className="mt-0.5 flex-row items-center gap-1">
+              <Mail size={10} color="#94A3B8" />
+              <Text className="text-xs text-slate-400" numberOfLines={1}>
+                {c.email}
+              </Text>
+            </View>
+          )}
+        </View>
+        <View className="items-end gap-1.5">
+          <Text className="text-xs font-bold text-slate-500">{c.totalOrders} orders</Text>
+          <View className="flex-row items-center gap-1 rounded-lg bg-amber-50 px-2 py-0.5">
+            <Star size={9} color="#F59E0B" fill="#F59E0B" />
+            <Text className="text-xs font-bold text-amber-600">{c.loyaltyPoints}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    ),
+    [nav]
+  );
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -135,6 +178,12 @@ export default function CustomersScreen() {
         keyExtractor={(c) => c.id}
         contentContainerClassName="px-4 pt-3 pb-6"
         showsVerticalScrollIndicator={false}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
+        renderItem={renderCustomer}
         ListEmptyComponent={
           <EmptyState
             icon={<Users size={28} color="#CBD5E1" strokeWidth={1.5} />}
@@ -144,43 +193,6 @@ export default function CustomersScreen() {
             }
           />
         }
-        renderItem={({ item: c }) => (
-          <TouchableOpacity
-            onPress={() => nav.navigate('CustomerDetail', { customerId: c.id })}
-            activeOpacity={0.75}
-            className="mb-2.5 flex-row items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3.5"
-            style={{
-              shadowColor: '#0F172A',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              elevation: 1,
-            }}>
-            <Avatar name={c.name} size="lg" />
-            <View className="min-w-0 flex-1">
-              <Text className="text-sm font-bold text-slate-900">{c.name}</Text>
-              <View className="mt-0.5 flex-row items-center gap-1">
-                <Phone size={10} color="#94A3B8" />
-                <Text className="text-xs text-slate-400">{c.phone}</Text>
-              </View>
-              {c.email && (
-                <View className="mt-0.5 flex-row items-center gap-1">
-                  <Mail size={10} color="#94A3B8" />
-                  <Text className="text-xs text-slate-400" numberOfLines={1}>
-                    {c.email}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <View className="items-end gap-1.5">
-              <Text className="text-xs font-bold text-slate-500">{c.totalOrders} orders</Text>
-              <View className="flex-row items-center gap-1 rounded-lg bg-amber-50 px-2 py-0.5">
-                <Star size={9} color="#F59E0B" fill="#F59E0B" />
-                <Text className="text-xs font-bold text-amber-600">{c.loyaltyPoints}</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
       />
 
       {/* Add Customer Modal */}

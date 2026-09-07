@@ -4,7 +4,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Text, TouchableOpacity, View, StatusBar, Vibration, Image } from 'react-native';
-import { Delete } from 'lucide-react-native';
+import { Delete, ArrowRight } from 'lucide-react-native';
 import { useAuth } from '../../auth/AuthContext';
 import { dbGetSettings } from '../../db';
 
@@ -141,7 +141,10 @@ export default function PinScreen() {
             shadowRadius: 8,
             elevation: 4,
           }}>
-          <Text className="text-sm font-bold text-white">Tap to Set Up →</Text>
+          <View className="flex-row items-center gap-1">
+            <Text className="text-sm font-bold text-white">Tap to Set Up</Text>
+            <ArrowRight size={14} color="#fff" strokeWidth={2} />
+          </View>
           <Text className="mt-0.5 text-xs text-sky-100">No PIN configured yet</Text>
         </TouchableOpacity>
       )}

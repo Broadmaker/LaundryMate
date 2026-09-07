@@ -1,5 +1,5 @@
 // src/screens/reports/ReportsScreen.tsx
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StatusBar, Dimensions } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -35,74 +35,77 @@ export default function ReportsScreen() {
     }, [])
   );
 
-  if (loading) return <LoadingScreen />;
-
-  // Month totals — use order `total` (what was charged), not amountPaid
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const monthOrders = orders.filter(
-    (o) => new Date(o.createdAt) >= monthStart && o.status !== 'cancelled'
-  );
-  const monthRevenue = monthOrders.reduce((s, o) => s + o.total, 0);
-  const monthExpenses = expenses
-    .filter((e) => new Date(e.date) >= monthStart)
-    .reduce((s, e) => s + e.amount, 0);
-  const netProfit = monthRevenue - monthExpenses;
-
-  // Daily data for chart
-  const daily = Array.from({ length: period }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (period - 1 - i));
-    d.setHours(0, 0, 0, 0);
-    const nd = new Date(d);
-    nd.setDate(d.getDate() + 1);
-    const dayRev = orders
-      .filter((o) => {
-        const dt = new Date(o.createdAt);
-        return dt >= d && dt < nd && o.status !== 'cancelled';
-      })
-      .reduce((s, o) => s + o.total, 0);
-    const dayExp = expenses
-      .filter((e) => {
-        const dt = new Date(e.date);
-        return dt >= d && dt < nd;
-      })
+  const { monthRevenue, monthExpenses, netProfit, daily, maxVal, svcBreakdown, totalSvcRev, expBreakdown } = useMemo(() => {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const monthOrders = orders.filter(
+      (o) => new Date(o.createdAt) >= monthStart && o.status !== 'cancelled'
+    );
+    const mRev = monthOrders.reduce((s, o) => s + o.total, 0);
+    const mExp = expenses
+      .filter((e) => new Date(e.date) >= monthStart)
       .reduce((s, e) => s + e.amount, 0);
+    const dailyArr = Array.from({ length: period }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (period - 1 - i));
+      d.setHours(0, 0, 0, 0);
+      const nd = new Date(d);
+      nd.setDate(d.getDate() + 1);
+      const dayRev = orders
+        .filter((o) => {
+          const dt = new Date(o.createdAt);
+          return dt >= d && dt < nd && o.status !== 'cancelled';
+        })
+        .reduce((s, o) => s + o.total, 0);
+      const dayExp = expenses
+        .filter((e) => {
+          const dt = new Date(e.date);
+          return dt >= d && dt < nd;
+        })
+        .reduce((s, e) => s + e.amount, 0);
+      return {
+        label: d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
+        rev: dayRev,
+        exp: dayExp,
+      };
+    });
+    const max = Math.max(...dailyArr.map((d) => Math.max(d.rev, d.exp)), 1);
+    const map: Record<string, { rev: number; addonRev: number; units: number }> = {};
+    orders.forEach((o) =>
+      o.items.forEach((item) => {
+        if (!map[item.serviceName]) map[item.serviceName] = { rev: 0, addonRev: 0, units: 0 };
+        map[item.serviceName].rev += item.subtotal;
+        map[item.serviceName].addonRev += item.addons.reduce((s, a) => s + a.price, 0);
+        map[item.serviceName].units += item.qty;
+      })
+    );
+    const svc = Object.entries(map)
+      .map(([name, data]) => ({ name, ...data, total: data.rev + data.addonRev }))
+      .sort((a, b) => b.total - a.total);
+    const totalRev = svc.reduce((s, v) => s + v.total, 0);
+    const expB = EXPENSE_CATEGORIES.map((cat) => {
+      const catExp = expenses.filter((e) => e.category === cat.id);
+      const total = catExp.reduce((s, e) => s + e.amount, 0);
+      return { ...cat, total, count: catExp.length };
+    })
+      .filter((c) => c.total > 0)
+      .sort((a, b) => b.total - a.total);
     return {
-      label: d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
-      rev: dayRev,
-      exp: dayExp,
+      monthRevenue: mRev,
+      monthExpenses: mExp,
+      netProfit: mRev - mExp,
+      daily: dailyArr,
+      maxVal: max,
+      svcBreakdown: svc,
+      totalSvcRev: totalRev,
+      expBreakdown: expB,
     };
-  });
-
-  const maxVal = Math.max(...daily.map((d) => Math.max(d.rev, d.exp)), 1);
+  }, [orders, expenses, period]);
   const BAR_W = Math.max(8, (SCREEN_W - 64) / (period * 2.5));
   const BAR_MAX_H = 72;
 
-  // Service breakdown
-  const svcMap: Record<string, { rev: number; addonRev: number; units: number }> = {};
-  orders.forEach((o) =>
-    o.items.forEach((item) => {
-      if (!svcMap[item.serviceName]) svcMap[item.serviceName] = { rev: 0, addonRev: 0, units: 0 };
-      svcMap[item.serviceName].rev += item.subtotal;
-      svcMap[item.serviceName].addonRev += item.addons.reduce((s, a) => s + a.price, 0);
-      svcMap[item.serviceName].units += item.qty;
-    })
-  );
-  const svcBreakdown = Object.entries(svcMap)
-    .map(([name, data]) => ({ name, ...data, total: data.rev + data.addonRev }))
-    .sort((a, b) => b.total - a.total);
-  const totalSvcRev = svcBreakdown.reduce((s, v) => s + v.total, 0);
-
-  // Expense breakdown
-  const expBreakdown = EXPENSE_CATEGORIES.map((cat) => {
-    const catExp = expenses.filter((e) => e.category === cat.id);
-    const total = catExp.reduce((s, e) => s + e.amount, 0);
-    return { ...cat, total, count: catExp.length };
-  })
-    .filter((c) => c.total > 0)
-    .sort((a, b) => b.total - a.total);
+  if (loading) return <LoadingScreen />;
 
   return (
     <View className="flex-1 bg-slate-50">

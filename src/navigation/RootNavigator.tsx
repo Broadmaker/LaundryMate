@@ -28,7 +28,7 @@ function AppNavigator() {
   return (
     <Tab.Navigator
       tabBar={(props) => <AppTabBar {...props} userRole={user.role} />}
-      screenOptions={{ headerShown: false }}>
+      screenOptions={{ headerShown: false, popToTopOnBlur: true }}>
       <Tab.Screen name="Dashboard" component={DashboardStack} />
       <Tab.Screen name="Orders" component={OrdersStack} />
       <Tab.Screen name="NewOrder" component={NewOrderStack} />
